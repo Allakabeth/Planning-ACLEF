@@ -138,3 +138,5 @@ pages/api/test-*.js
 # !package-lock.json
 # !next.config.mjs
 # !jsconfig.json
+
+.vercel
