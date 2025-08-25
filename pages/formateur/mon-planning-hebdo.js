@@ -38,7 +38,7 @@ export default function MonPlanningHebdo() {
         if (user) {
             loadPlanningData()
         }
-    }, [user])
+    }, [user, currentWeek])
 
     // ★★★ FONCTION ROI AMÉLIORÉE - ÉCOUTE ACTIVE SPÉCIALISÉE FORMATEUR ★★★
     const ecouterCommandesRoi = () => {
@@ -606,22 +606,16 @@ export default function MonPlanningHebdo() {
         const newWeek = new Date(currentWeek)
         newWeek.setDate(newWeek.getDate() - 7)
         setCurrentWeek(newWeek)
-        // Recharger les données pour la nouvelle semaine
-        setTimeout(() => loadPlanningData(), 100)
     }
 
     const nextWeek = () => {
         const newWeek = new Date(currentWeek)
         newWeek.setDate(newWeek.getDate() + 7)
         setCurrentWeek(newWeek)
-        // Recharger les données pour la nouvelle semaine
-        setTimeout(() => loadPlanningData(), 100)
     }
 
     const goToCurrentWeek = () => {
         setCurrentWeek(new Date())
-        // Recharger les données pour la semaine actuelle
-        setTimeout(() => loadPlanningData(), 100)
     }
 
     const weekDates = getWeekDates(currentWeek)
