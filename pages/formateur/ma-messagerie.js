@@ -253,14 +253,35 @@ export default function MaMessagerie() {
         
         {/* En-tête */}
         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <h1 style={{
-            fontSize: '28px',
-            fontWeight: 'bold',
-            marginBottom: '15px',
-            color: '#333'
-          }}>
-            Ma Messagerie
-          </h1>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: 'bold',
+              margin: 0,
+              color: '#333'
+            }}>
+              Ma Messagerie
+            </h1>
+            <button
+              onClick={() => router.push('/formateur')}
+              style={{
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}
+            >
+              🏠
+            </button>
+          </div>
 
           {/* Indicateur messages non lus */}
           {messagesNonLus > 0 && (

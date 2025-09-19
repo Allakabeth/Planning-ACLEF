@@ -179,7 +179,10 @@ export default function AbsenceFormateur() {
     // Navigation mensuelle
     const changerMois = (direction) => {
         const nouvelleDate = new Date(currentDate);
-        nouvelleDate.setMonth(currentDate.getMonth() + direction);
+        // Fix pour éviter le saut de mois (31 août -> 1er octobre au lieu de septembre)
+        // On force le jour à 1 avant de changer le mois
+        nouvelleDate.setDate(1);
+        nouvelleDate.setMonth(nouvelleDate.getMonth() + direction);
         setCurrentDate(nouvelleDate);
         setMessage('');
     };

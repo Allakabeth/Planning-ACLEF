@@ -55,11 +55,32 @@ function GestionFormateurs({ user, logout, inactivityTime }) {
         }
     }
 
-    // Fonction pour générer l'email fictif
+    /**
+     * Normalise un prénom/nom pour créer un email valide
+     * Supprime accents, cédilles et caractères spéciaux
+     * José Martínez → jose martinez
+     * François Müller → francois muller
+     */
+    const normalizeForEmail = (text) => {
+        return text
+            .toLowerCase()
+            .trim()
+            .normalize('NFD')                    // Décompose les caractères accentués
+            .replace(/[\u0300-\u036f]/g, '')    // Supprime les marques diacritiques
+            .replace(/[^a-z0-9]/g, '')          // Garde seulement lettres et chiffres
+    }
+
+    /**
+     * Génère un email fictif sécurisé pour un formateur
+     * Exemples :
+     * - José Martínez → jose.martinez@formateur.aclef
+     * - François Müller → francois.muller@formateur.aclef  
+     * - Marie-Claude → marieclaud.@formateur.aclef (si nom vide)
+     */
     const genererEmailFictif = (prenom, nom) => {
-        const prenomClean = prenom.toLowerCase().replace(/[^a-z]/g, '')
-        const nomClean = nom.toLowerCase().replace(/[^a-z]/g, '')
-        return `${prenomClean}.${nomClean}@formateur.aclef`
+        const prenomNormalized = normalizeForEmail(prenom)
+        const nomNormalized = normalizeForEmail(nom)
+        return `${prenomNormalized}.${nomNormalized}@formateur.aclef`
     }
 
     // Fonction pour ajouter un formateur

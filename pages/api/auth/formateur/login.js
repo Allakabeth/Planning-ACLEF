@@ -1,5 +1,20 @@
 import { supabase } from '../../../../lib/supabaseClient'
 import { generateTokenPair } from '../../../../lib/jwt'
+import bcrypt from 'bcryptjs'
+
+/**
+ * Normalise un prénom/nom pour créer un email valide
+ * Supprime accents, cédilles et caractères spéciaux
+ * José → jose, Martínez → martinez
+ */
+const normalizeForEmail = (text) => {
+    return text
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')                    // Décompose les caractères accentués
+        .replace(/[\u0300-\u036f]/g, '')    // Supprime les marques diacritiques
+        .replace(/[^a-z0-9]/g, '')          // Garde seulement lettres et chiffres
+}
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -15,14 +30,33 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Chercher le formateur par prénom
-        const { data: formateur, error: formateurError } = await supabase
+        console.log(`🔐 [LOGIN-DEBUG] Tentative login username="${username}", password="${password}"`)
+        
+        // Chercher le formateur par prénom (recherche flexible avec ilike)
+        // José tapé par l'utilisateur trouvera José en base
+        const { data: formateurs, error: formateurError } = await supabase
             .from('users')
             .select('*')
-            .ilike('prenom', username)
+            .ilike('prenom', `%${username}%`)
             .eq('role', 'formateur')
             .eq('archive', false)
-            .single()
+            
+        console.log(`🔐 [LOGIN-DEBUG] Requête Supabase - formateurs trouvés: ${formateurs?.length || 0}`)
+        formateurs?.forEach((f, i) => {
+            console.log(`🔐 [LOGIN-DEBUG] Formateur ${i}: ${f.prenom} ${f.nom}, email: ${f.email}, password_hash: ${f.password_hash ? 'EXISTE' : 'NULL'}`)
+        })
+
+        if (formateurError) {
+            return res.status(401).json({ 
+                error: 'Identifiants incorrects' 
+            })
+        }
+
+        // Trouver le bon formateur en comparant les prénoms normalisés
+        const usernameNormalized = normalizeForEmail(username)
+        const formateur = formateurs.find(f => 
+            normalizeForEmail(f.prenom) === usernameNormalized
+        )
 
         if (formateurError || !formateur) {
             return res.status(401).json({ 
@@ -34,19 +68,37 @@ export default async function handler(req, res) {
         let passwordValid = false
         let showEncouragement = false
 
-        if (formateur.custom_password) {
-            // Utiliser custom_password si défini
-            passwordValid = (password === formateur.custom_password)
-        } else {
-            // Sinon utiliser nom ET afficher encouragement
-            passwordValid = (password.toLowerCase() === formateur.nom.toLowerCase())
-            showEncouragement = passwordValid // Encouragement si connexion réussie avec nom
-        }
+        console.log(`🔐 [LOGIN-DEBUG] Vérification mot de passe pour ${formateur.prenom} ${formateur.nom}`)
+        console.log(`🔐 [LOGIN-DEBUG] password_hash exists: ${formateur.password_hash ? 'EXISTE' : 'NULL'}`)
 
-        if (!passwordValid) {
-            return res.status(401).json({ 
-                error: 'Identifiants incorrects' 
-            })
+        // Nouvelle logique de vérification
+        if (formateur.password_hash) {
+            console.log(`🔐 [LOGIN-DEBUG] Utilisation bcrypt`)
+            // Si password_hash existe, utiliser uniquement bcrypt
+            passwordValid = await bcrypt.compare(password, formateur.password_hash)
+            if (!passwordValid) {
+                return res.status(401).json({ 
+                    error: 'Mot de passe incorrect' 
+                })
+            }
+        } else {
+            console.log(`🔐 [LOGIN-DEBUG] Utilisation fallback nom normalisé`)
+            // Fallback : première connexion avec nom (Martínez → martinez)
+            const nomNormalized = normalizeForEmail(formateur.nom)
+            const passwordNormalized = normalizeForEmail(password)
+            
+            console.log(`🔐 [LOGIN-DEBUG] Comparaison normalisée:`)
+            console.log(`🔐 [LOGIN-DEBUG]   nom "${formateur.nom}" → "${nomNormalized}"`)
+            console.log(`🔐 [LOGIN-DEBUG]   password "${password}" → "${passwordNormalized}"`)
+            console.log(`🔐 [LOGIN-DEBUG]   match: ${passwordNormalized === nomNormalized}`)
+            
+            if (passwordNormalized !== nomNormalized) {
+                return res.status(401).json({ 
+                    error: 'Mot de passe incorrect' 
+                })
+            }
+            passwordValid = true
+            showEncouragement = true // Encourager à changer le mot de passe
         }
 
         // Générer le token
