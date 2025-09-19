@@ -1204,6 +1204,28 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
             });
         });
 
+        // 🔄 SUPPRESSION DES DONNÉES EXISTANTES AVANT SAUVEGARDE
+        const { error: deleteError } = await supabase
+            .from('planning_hebdomadaire')
+            .delete()
+            .in('date', weekDates);
+
+        if (deleteError) {
+            console.error('Erreur suppression planning existant:', deleteError);
+            throw deleteError;
+        }
+
+        const { error: deleteFormateursError } = await supabase
+            .from('planning_formateurs_hebdo')
+            .delete()
+            .in('date', weekDates);
+
+        if (deleteFormateursError) {
+            console.error('Erreur suppression planning formateurs existant:', deleteFormateursError);
+            throw deleteFormateursError;
+        }
+
+        // 📝 INSERTION DES NOUVELLES DONNÉES
         if (planningsToSave.length > 0) {
             // DELETE avant INSERT pour éviter les doublons
             const { error: deleteError } = await supabase
