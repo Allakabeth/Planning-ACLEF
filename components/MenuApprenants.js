@@ -171,12 +171,21 @@ export default function MenuApprenants({
     }
     
     if (date && jour && creneau && lieu_id) {
-      // 🚀 CHECK CACHE FIRST
+      // 🚀 CHECK CACHE FIRST - mais on invalidate le cache toutes les 30 secondes pour les absences
       const cacheKey = `${date}-${jour}-${creneau}-${lieu_id}`;
+      const now = Date.now();
+
+      // Invalider le cache toutes les 30 secondes pour permettre de voir les nouvelles absences
       if (cache.has(cacheKey)) {
-        console.log('🚀 Cache hit MenuApprenants:', cacheKey);
-        setApprenantsDisponibles(cache.get(cacheKey));
-        return;
+        const cacheEntry = cache.get(cacheKey);
+        if (cacheEntry.timestamp && (now - cacheEntry.timestamp) < 30000) {
+          console.log('🚀 Cache hit MenuApprenants:', cacheKey);
+          setApprenantsDisponibles(cacheEntry.data);
+          return;
+        } else {
+          console.log('🔄 Cache expiré, rechargement pour nouvelles absences');
+          cache.delete(cacheKey);
+        }
       }
       
       setLoading(true);
@@ -187,8 +196,11 @@ export default function MenuApprenants({
       
       getApprenantsDisponibles(date, jour, creneau, lieu_id)
         .then(disponibles => {
-          // Store in cache
-          cache.set(cacheKey, disponibles);
+          // Store in cache with timestamp
+          cache.set(cacheKey, {
+            data: disponibles,
+            timestamp: Date.now()
+          });
           setApprenantsDisponibles(disponibles);
         })
         .catch(err => {
