@@ -37,6 +37,10 @@ dist/
 .env.test.local
 .env*
 
+# Scripts contenant des secrets
+setup-vercel-env.sh
+*-env.sh
+
 # ====================================
 # 3. FICHIERS TEMPORAIRES & CACHE
 # ====================================
