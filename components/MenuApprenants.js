@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { filterApprenantsParAbsence } from '../lib/absenceApprenantUtils';
 
 // MenuApprenants V1 Corrigé - Wrapper intelligent compatible avec structure existante
 export default function MenuApprenants({
@@ -125,24 +126,27 @@ export default function MenuApprenants({
         console.log('Suspensions non disponibles, poursuite sans');
       }
 
-      // 4. Appliquer les trois filtres
+      // 4. Appliquer les trois filtres existants
       const results = apprenantsData
         .map(apprenant => {
           const critere1 = validateDatesFormation(apprenant, dateTest);
           if (!critere1) return null;
-          
+
           const critere2 = validateStatutActuel(apprenant, dateTest, suspensions);
           if (!critere2) return null;
-          
+
           const critere3 = validatePlanningType(apprenant.id, planningTypes || [], jour, creneauDB, lieuId);
           if (!critere3) return null;
-          
+
           return apprenant;
         })
         .filter(Boolean);
-      
-      console.log(`✅ MenuApprenants V1 Corrigé: ${results.length} apprenants disponibles`);
-      return results;
+
+      // 5. 🆕 NOUVEAU: Filtrer par absences apprenants (non-intrusif)
+      const resultatsAvecAbsences = await filterApprenantsParAbsence(results, dateTest, creneau, lieuId);
+
+      console.log(`✅ MenuApprenants V1 Corrigé: ${results.length} apprenants disponibles → ${resultatsAvecAbsences.length} après filtrage absences`);
+      return resultatsAvecAbsences;
       
     } catch (error) {
       console.error('Erreur filtrage MenuApprenants V1 Corrigé:', error);
@@ -245,18 +249,26 @@ export default function MenuApprenants({
         </div>
       
       {/* Rendu des selects pour chaque apprenant sélectionné - Structure identique à l'existant */}
-      {selectedApprenants.map((selectedId, i) => (
+      {selectedApprenants.map((selectedId, i) => {
+        // Trouver l'apprenant sélectionné pour déterminer le style
+        const apprenantSelectionne = apprenantsDisponibles.find(a => a.id === selectedId);
+        const isPresenceExceptionnelle = apprenantSelectionne?.statutAbsence === 'presence_exceptionnelle';
+
+        return (
         <div key={i}>
           <select
             style={{
               width: '100%',
               padding: '3px',
-              border: '1px solid #d1d5db',
+              border: isPresenceExceptionnelle ? '2px solid #ff9800' : '1px solid #d1d5db',
               borderRadius: '3px',
               fontSize: '10px',
-              background: couleurEnregistree || 'rgba(255,255,255,0.9)',
-              color: '#000000',
-              marginBottom: '3px'
+              background: isPresenceExceptionnelle ?
+                'linear-gradient(135deg, #ff9800, #ffb74d)' :
+                (couleurEnregistree || 'rgba(255,255,255,0.9)'),
+              color: isPresenceExceptionnelle ? 'white' : '#000000',
+              marginBottom: '3px',
+              fontWeight: isPresenceExceptionnelle ? 'bold' : 'normal'
             }}
             value={selectedId}
             onChange={(e) => onApprenantChange(dayIdx, lieuIdx, creneauName, i, e.target.value)}
@@ -275,13 +287,22 @@ export default function MenuApprenants({
                 return !currentSelections.includes(a.id) || currentSelections[i] === a.id;
               })
               .map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.prenom} {a.nom}
+                <option
+                  key={a.id}
+                  value={a.id}
+                  style={{
+                    backgroundColor: a.statutAbsence === 'presence_exceptionnelle' ? '#ff9800' : 'inherit',
+                    color: a.statutAbsence === 'presence_exceptionnelle' ? 'white' : 'inherit'
+                  }}
+                >
+                  {a.statutAbsence === 'presence_exceptionnelle' ? '✨ ' : ''}{a.prenom} {a.nom}
+                  {a.statutAbsence === 'presence_exceptionnelle' && a.lieuExceptionnel ? ` (${a.lieuExceptionnel})` : ''}
                 </option>
               ))}
           </select>
         </div>
-      ))}
+        )
+      })}
 
       {/* Boutons +/- identiques à l'existant */}
       <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginTop: '3px' }}>
