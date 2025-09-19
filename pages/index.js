@@ -414,14 +414,17 @@ function Dashboard() {
     { title: "Planning Coordonnateur", icon: "📅", href: "/planning-coordo" },
     { title: "Valider Changements", icon: "✅", href: "/valider-changements" },
     { title: "Prise Contrôle Formateur", icon: "🎮", href: "/prise-controle-formateur" },
-    { title: "Valider Planning Type", icon: "👨‍🏫", href: "/planning-type-formateurs" }
+    { title: "Valider Planning Type", icon: "👨‍🏫", href: "/planning-type-formateurs" },
+    { title: "Planning Type Apprenants", icon: "👨‍🎓", href: "/planning-type-apprenants" }
   ]
+
 
   const gestionItems = [
     { title: "Gestion Formateurs", icon: "👨‍🏫", href: "/gestion-formateurs" },
     { title: "Gestion Apprenants", icon: "👨‍🎓", href: "/gestion-apprenants" },
     { title: "Gestion Salariés", icon: "👷‍♂️", href: "/gestion-salaries" },
-    { title: "Gestion Lieux", icon: "📍", href: "/gestion-lieux" }
+    { title: "Gestion Lieux", icon: "📍", href: "/gestion-lieux" },
+    { title: "Gestion Absences Formateur", icon: "📊", href: "/gestion-absences-formateur" }
   ]
 
 
@@ -620,6 +623,7 @@ function Dashboard() {
               ))}
             </div>
           </div>
+
         </div>
 
         {/* Colonne 2 : Messagerie - MessagerieSafeWrapper */}

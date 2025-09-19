@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
-// RÉACTIVATION PROGRESSIVE - Étape 1
-import MenuApprenants from '../components/MenuApprenants';
 
 const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
@@ -24,10 +22,89 @@ const SkeletonPlanningLoader = () => {
         }
         @media print {
           .no-print { display: none !important; }
-          .no-print * { display: none !important; }
-          button { display: none !important; }
-          body { background: white !important; }
-          .print-title { display: block !important; text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 20px; color: black !important; }
+          body { 
+            background: white !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 6px !important;
+          }
+          .print-title { 
+            display: block !important; 
+            text-align: center; 
+            font-size: 12px !important; 
+            font-weight: bold; 
+            margin: 2px 0 !important; 
+            color: black !important; 
+          }
+          /* Optimisation globale pour A4 paysage */
+          * {
+            box-sizing: border-box !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          /* Container principal */
+          .planning-container {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 5px !important;
+            overflow: visible !important;
+          }
+          /* Tableau planning */
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 5px !important;
+            margin: 0 !important;
+          }
+          th, td {
+            border: 1px solid #333 !important;
+            padding: 1px !important;
+            font-size: 5px !important;
+            vertical-align: top !important;
+            overflow: hidden !important;
+          }
+          /* Headers colonnes */
+          th {
+            background: #f0f0f0 !important;
+            font-weight: bold !important;
+            font-size: 6px !important;
+            text-align: center !important;
+          }
+          /* Selects formateurs - unification avec apprenants */
+          select {
+            width: 100% !important;
+            padding: 0 !important;
+            border: 1px solid #ccc !important;
+            border-radius: 1px !important;
+            font-size: 4px !important;
+            margin: 0 !important;
+            background: white !important;
+            color: #333 !important;
+          }
+          /* Titres sections dans cellules */
+          .formateur-header, .apprenant-header {
+            font-size: 5px !important;
+            font-weight: bold !important;
+            text-align: center !important;
+            margin: 0 !important;
+            padding: 1px !important;
+            background: #f8f9fa !important;
+          }
+          /* Uniformisation apprenants/formateurs */
+          .apprenants-print-display {
+            display: block !important;
+            font-size: 4px !important;
+            padding: 0 !important;
+            background: white !important;
+            border: 1px solid #ccc !important;
+            border-radius: 1px !important;
+            margin: 0 !important;
+            color: #333 !important;
+          }
+          /* Suppression des espaces inutiles */
+          br { display: none !important; }
+          .skeleton, .shimmer { display: none !important; }
         }
         .print-title { display: none; }
       `}</style>
@@ -402,9 +479,6 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
     const [lieuxSelectionnes, setLieuxSelectionnes] = useState({});
     const [salariesSelectionnes, setSalariesSelectionnes] = useState({});
     
-    // États pour coloration persistante post-enregistrement
-    const [couleursEnregistrees, setCouleursEnregistrees] = useState({});
-    
     // États de contrôle
     const [isLoading, setIsLoading] = useState(false);
     const [dataLoaded, setDataLoaded] = useState(false);
@@ -419,35 +493,6 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
         refreshEffectues: 0,
         derniereActivite: null
     });
-
-    // ☆☆☆ HELPER FUNCTIONS POUR IMPRESSION - RÉCUPÉRATION DES NOMS ☆☆☆
-    // Helper pour récupérer le nom du lieu
-    const getNomLieu = (lieuId) => {
-        if (!lieuId) return '';
-        const lieu = lieux.find(l => l.id === lieuId);
-        return lieu ? lieu.nom : '';
-    };
-
-    // Helper pour récupérer le nom du salarié  
-    const getNomSalarie = (salarieId) => {
-        if (!salarieId) return '';
-        const salarie = salaries.find(s => s.id === salarieId);
-        return salarie ? (salarie.initiales || getInitiales(salarie.prenom, salarie.nom)) : '';
-    };
-
-    // Helper pour récupérer le nom du formateur
-    const getNomFormateur = (formateurId) => {
-        if (!formateurId) return '';
-        const formateur = formateurs.find(f => f.id === formateurId);
-        return formateur ? `${formateur.prenom} ${formateur.nom}` : '';
-    };
-
-    // Helper pour récupérer le nom de l'apprenant
-    const getNomApprenant = (apprenantId) => {
-        if (!apprenantId) return '';
-        const apprenant = apprenants.find(a => a.id === apprenantId);
-        return apprenant ? `${apprenant.prenom} ${apprenant.nom}` : '';
-    };
 
     // ☆☆☆ FONCTION ROI AMÉLIORÉE - ÉCOUTE ACTIVE COMPLÈTE ☆☆☆
     const ecouterCommandesRoi = () => {
@@ -685,11 +730,8 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type !== 'formation') return false;
             
-            const dateDebut = new Date(absence.date_debut + 'T00:00:00');
-            const dateFin = new Date(absence.date_fin + 'T23:59:59');
-            const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+            const estDansIntervalle = dateStr >= absence.date_debut && dateStr <= absence.date_fin;
+            return estDansIntervalle;
         });
         
         // Si dispo exceptionnelle trouvée = PAS absent !
@@ -703,11 +745,8 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type === 'formation') return false; // Dispo except n'est pas absence
             
-            const dateDebut = new Date(absence.date_debut + 'T00:00:00');
-            const dateFin = new Date(absence.date_fin + 'T23:59:59');
-            const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+            const estDansIntervalle = dateStr >= absence.date_debut && dateStr <= absence.date_fin;
+            return estDansIntervalle;
         });
 
         if (absenceJour) {
@@ -723,11 +762,8 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type !== 'formation') return false;
             
-            const dateDebut = new Date(absence.date_debut + 'T00:00:00');
-            const dateFin = new Date(absence.date_fin + 'T23:59:59');
-            const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+            const estDansIntervalle = dateStr >= absence.date_debut && dateStr <= absence.date_fin;
+            return estDansIntervalle;
         });
 
         return !!dispoJour;
@@ -744,18 +780,6 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
         const dayIndex = jours.indexOf(jour);
         const weekDates = getWeekDates(currentDate);
         const dateStr = weekDates[dayIndex];
-
-        // ☆☆☆ PRIORITÉ ABSOLUE : DISPO EXCEPTIONNELLES D'ABORD ☆☆☆
-        const formateursDispoExceptionnelle = formateurs
-            .filter(f => hasDispoExceptionnelle(f.id, dateStr))
-            .map(f => ({
-                ...f,
-                statut: 'dispo_except',
-                lieuSpecifique: false,
-                source: 'exception_validee_priorite_absolue'
-            }));
-
-        console.log(`🎯 Dispo exceptionnelles trouvées pour ${dateStr}:`, formateursDispoExceptionnelle.map(f => f.prenom));
 
         const formateursAvecPlanningType = planningTypes.filter(pt => {
             const jourMatch = pt.jour === jour;
@@ -820,8 +844,7 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
             };
         }).filter(f => f !== null);
 
-        // ☆☆☆ LOGIQUE ROI CORRIGÉE - DISPO EXCEPT TOUJOURS TRAITÉES ☆☆☆
-        const formateursSansPlanningAvecStatut = (filtreDisponibilite === 'toutes' || filtreDisponibilite === 'exceptionnelles')
+        const formateursSansPlanningAvecStatut = filtreDisponibilite === 'toutes' 
             ? formateursSansPlanningType.filter(f => !isFormateurAbsent(f.id, dateStr))
                 .map(f => {
                     // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT MÊME SANS PLANNING TYPE ☆☆☆
@@ -835,78 +858,16 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
                         };
                     }
                     
-                    // Si filtre = 'exceptionnelles' ET pas de dispo except = exclure
-                    if (filtreDisponibilite === 'exceptionnelles') {
-                        return null; // Sera filtré
-                    }
-                    
                     return { 
                         ...f, 
                         statut: null,
                         lieuSpecifique: false,
                         source: 'aucun_planning'
                     };
-                }).filter(f => f !== null)
+                })
             : [];
 
-        // 🆕 NOUVELLE LOGIQUE : Exclusion formateurs déjà assignés sur le même créneau
-        const formateursAvecExclusion = [...formateursDisponiblesPlanningType, ...formateursSansPlanningAvecStatut]
-            .filter(formateur => {
-                // Vérifier si ce formateur est déjà assigné sur le même jour/créneau dans un autre lieu
-                const estDejaAssigne = Object.keys(formateursParCase).some(cellKey => {
-                    // Décomposer la cellKey: "dayIndex-lieuIndex-creneau"
-                    const [dayIdx, lieuIdx, creneauKey] = cellKey.split('-');
-                    const cellDayIndex = parseInt(dayIdx);
-                    const cellCreneau = creneauKey;
-                    
-                    // Vérifier si c'est le même jour et créneau
-                    const currentDayIndex = jours.indexOf(jour);
-                    const memeJour = cellDayIndex === currentDayIndex;
-                    const memeCreneau = cellCreneau === creneau;
-                    
-                    if (memeJour && memeCreneau) {
-                        // Vérifier si le formateur est assigné dans cette case
-                        const formateursAssignes = formateursParCase[cellKey] || [];
-                        const estAssigneDansCetteCase = formateursAssignes.includes(formateur.id);
-                        
-                        // Si assigné dans cette case, on doit vérifier si c'est pour le même lieu
-                        if (estAssigneDansCetteCase) {
-                            // Récupérer le lieu_id de la cellule où le formateur est assigné
-                            const cellLieuId = lieuxSelectionnes[cellKey];
-                            
-                            // Si c'est un lieu différent, alors c'est une exclusion
-                            // On compare les lieu_id directement, pas les indices
-                            return cellLieuId !== lieuId;
-                        }
-                    }
-                    
-                    return false;
-                });
-                
-                if (estDejaAssigne) {
-                    console.log(`🚫 ${formateur.prenom} exclu - déjà assigné ${jour} ${creneau} ailleurs`);
-                }
-                
-                return !estDejaAssigne;
-            });
-
-        // ☆☆☆ PRIORITÉ ABSOLUE : DISPO EXCEPT D'ABORD, PUIS LES AUTRES ☆☆☆
-        
-        // Séparer les dispo exceptionnelles des autres
-        const dispoExceptFiltered = formateursDispoExceptionnelle.filter(f => {
-            // Les dispo except ne sont PAS soumises au filtre disponibilité
-            if (filtreDisponibilite === 'disponible') return false; // Exclure si filtre = "disponible"
-            return true; // Toujours inclure pour "toutes" et "exceptionnelles"
-        });
-
-        // Autres formateurs (sans dispo except pour éviter doublons)  
-        const autresFormateurs = formateursAvecExclusion.filter(f => 
-            !formateursDispoExceptionnelle.some(dispo => dispo.id === f.id)
-        );
-
-        console.log(`🎯 FINAL - Dispo except: ${dispoExceptFiltered.length}, Autres: ${autresFormateurs.length}`);
-        
-        return [...dispoExceptFiltered, ...autresFormateurs];
+        return [...formateursDisponiblesPlanningType, ...formateursSansPlanningAvecStatut];
     };
 
     // CHARGEMENT DU PLANNING
@@ -931,39 +892,14 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
             const newSalariesSelectionnes = {};
             const newLieuxParJour = {};
 
-            // ⭐ CORRECTION : Reconstruction des indices depuis les données BDD
-            jours.forEach((jour, dayIndex) => {
-                // Extraire tous les lieu_index uniques pour ce jour
-                const indicesUtilises = new Set();
-                
-                if (planningData && planningData.length > 0) {
-                    planningData.forEach(item => {
-                        if (item.jour === jour) {
-                            const lieuIndex = item.lieu_index || 0;
-                            indicesUtilises.add(lieuIndex);
-                        }
-                    });
-                }
-                
-                // Si aucune donnée, initialiser avec [0] par défaut
-                if (indicesUtilises.size === 0) {
-                    newLieuxParJour[dayIndex] = [0];
-                } else {
-                    // Convertir en array trié
-                    newLieuxParJour[dayIndex] = Array.from(indicesUtilises).sort((a, b) => a - b);
-                }
-            });
-
-            // Initialiser les structures pour TOUS les indices trouvés
             jours.forEach((_, dayIndex) => {
-                newLieuxParJour[dayIndex].forEach(lieuIndex => {
-                    ['Matin', 'AM'].forEach((creneau) => {
-                        const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                        newApprenantsParCase[key] = [""];
-                        newFormateursParCase[key] = [""];
-                        newLieuxSelectionnes[key] = "";
-                        newSalariesSelectionnes[key] = "";
-                    });
+                newLieuxParJour[dayIndex] = [0];
+                ['Matin', 'AM'].forEach((creneau) => {
+                    const key = `${dayIndex}-0-${creneau}`;
+                    newApprenantsParCase[key] = [""];
+                    newFormateursParCase[key] = [""];
+                    newLieuxSelectionnes[key] = "";
+                    newSalariesSelectionnes[key] = "";
                 });
             });
 
@@ -1010,54 +946,6 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
         }
     }, [currentDate, lieux, salaries, formateurs, apprenants]);
 
-    // NOUVEAU : Recalculer couleurs enregistrées après chargement des données
-    useEffect(() => {
-        if (dataLoaded && lieux.length > 0) {
-            const couleursRestaurees = calculerCouleursEnregistrees();
-            setCouleursEnregistrees(couleursRestaurees);
-        }
-    }, [dataLoaded, formateursParCase, apprenantsParCase, lieuxSelectionnes, lieuxParJour, lieux]);
-
-    // Hook pour détecter l'impression et changer les couleurs
-    useEffect(() => {
-        const handleBeforePrint = () => {
-            // Forcer le fond blanc avant impression
-            const mainContainer = document.querySelector('div[style*="linear-gradient(135deg, #667eea"]');
-            if (mainContainer) {
-                mainContainer.style.background = 'white';
-                mainContainer.style.backgroundImage = 'none';
-            }
-            
-            // Forcer tous les conteneurs avec gradient
-            const allGradients = document.querySelectorAll('div[style*="linear-gradient"]');
-            allGradients.forEach(el => {
-                el.style.background = 'white';
-                el.style.backgroundImage = 'none';
-            });
-        };
-        
-        const handleAfterPrint = () => {
-            // Remettre les couleurs après impression
-            const mainContainer = document.querySelector('div[style*="background: white"]');
-            if (mainContainer) {
-                mainContainer.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-            }
-            
-            // Recharger la page pour remettre tous les styles d'origine
-            window.location.reload();
-        };
-        
-        // Écouter les événements d'impression
-        window.addEventListener('beforeprint', handleBeforePrint);
-        window.addEventListener('afterprint', handleAfterPrint);
-        
-        // Cleanup
-        return () => {
-            window.removeEventListener('beforeprint', handleBeforePrint);
-            window.removeEventListener('afterprint', handleAfterPrint);
-        };
-    }, []);
-
     // FONCTIONS DE SAUVEGARDE
     const handleEnregistrerBrouillon = async () => {
         setIsLoading(true);
@@ -1065,10 +953,6 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
         try {
             const weekDates = getWeekDates(currentDate);
             const stats = await sauvegarderPlanning('brouillon', weekDates);
-
-            // NOUVEAU : Appliquer coloration persistante après sauvegarde réussie
-            const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
-            setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
             setMessage(`📝 Brouillon semaine ${semaine} enregistré !
 ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
@@ -1091,10 +975,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
         try {
             const weekDates = getWeekDates(currentDate);
             const stats = await sauvegarderPlanning('validé', weekDates);
-
-            // NOUVEAU : Appliquer coloration persistante après sauvegarde réussie
-            const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
-            setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
             await envoyerMessagesValidation(stats, semaine, weekDates);
 
@@ -1205,17 +1085,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         });
 
         if (planningsToSave.length > 0) {
-            // DELETE avant INSERT pour éviter les doublons
-            const { error: deleteError } = await supabase
-                .from('planning_hebdomadaire')
-                .delete()
-                .in('date', weekDates);
-
-            if (deleteError) {
-                console.error('Erreur suppression planning:', deleteError);
-                throw deleteError;
-            }
-
             const { error: insertError } = await supabase
                 .from('planning_hebdomadaire')
                 .insert(planningsToSave);
@@ -1227,17 +1096,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         }
 
         if (planningFormateursToSave.length > 0) {
-            // DELETE avant INSERT pour éviter les doublons
-            const { error: deleteFormateursError } = await supabase
-                .from('planning_formateurs_hebdo')
-                .delete()
-                .in('date', weekDates);
-
-            if (deleteFormateursError) {
-                console.error('Erreur suppression planning formateurs:', deleteFormateursError);
-                throw deleteFormateursError;
-            }
-
             const { error: insertFormateursError } = await supabase
                 .from('planning_formateurs_hebdo')
                 .insert(planningFormateursToSave);
@@ -1258,65 +1116,19 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
     const getLieuCouleur = (lieuId) => {
         if (!lieuId) return '#ffffff';
         const lieu = lieux.find(l => l.id === lieuId);
-        // Donner une couleur gris clair à MPT si elle n'en a pas
-        if (lieu && lieu.nom && lieu.nom.toLowerCase().includes('mpt') && (!lieu.couleur || lieu.couleur === '#ffffff')) {
-            return '#f3f4f6';
-        }
         return lieu?.couleur || '#ffffff';
     };
 
-    // FONCTION COLORATION PERSISTANTE - Calculer couleurs après enregistrement
-    const calculerCouleursEnregistrees = () => {
-        const nouvellesCouleursEnregistrees = {};
-        
-        jours.forEach((jour, dayIndex) => {
-            (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
-                ['Matin', 'AM'].forEach((creneau) => {
-                    const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                    
-                    const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
-                    const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
-                    const lieuId = lieuxSelectionnes[key] || null;
-                    
-                    // Case a des personnes affectées ET un lieu sélectionné
-                    const aDesPersonnes = formateursIds.length > 0 || apprenantsIds.length > 0;
-                    
-                    if (lieuId && aDesPersonnes) {
-                        nouvellesCouleursEnregistrees[key] = getLieuCouleur(lieuId);
-                    }
-                });
-            });
-        });
-        
-        return nouvellesCouleursEnregistrees;
-    };
-
-    // FONCTION COLORATION PERSISTANTE - Vérifier si case devient vide après suppression
-    const verifierEtSupprimerCouleur = (cellKey) => {
-        // Extraire les indices de la cellKey
-        const [dayIndex, lieuIndex, creneau] = cellKey.split('-');
-        const dayIdx = parseInt(dayIndex);
-        const lieuIdx = parseInt(lieuIndex);
-        const key = cellKey;
-        
-        // Vérifier s'il reste des personnes affectées dans cette case
-        const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
-        const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
-        const aDesPersonnes = formateursIds.length > 0 || apprenantsIds.length > 0;
-        
-        // Si plus personne, supprimer la couleur
-        if (!aDesPersonnes) {
-            setCouleursEnregistrees(prev => {
-                const nouveau = { ...prev };
-                delete nouveau[cellKey];
-                return nouveau;
-            });
-        }
-    };
-
     const getTextColor = (backgroundColor) => {
-        // FORCER NOIR POUR TOUS LES LIEUX (uniformisation impression)
-        return '#000000';
+        if (!backgroundColor || backgroundColor === '#ffffff') return '#000000';
+        
+        const hex = backgroundColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.5 ? '#000000' : '#ffffff';
     };
 
     const getInitiales = (prenom, nom) => {
@@ -1353,11 +1165,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         const newList = [...(formateursParCase[key] || [])];
         newList[selectIndex] = value;
         setFormateursParCase(prev => ({ ...prev, [key]: newList }));
-        
-        // NOUVEAU : Si on supprime un formateur (valeur vide), vérifier si case devient vide
-        if (value === "") {
-            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
-        }
     };
 
     const handleAddFormateur = (dayIndex, lieuIndex, creneau) => {
@@ -1376,9 +1183,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
                 ...prev,
                 [key]: prev[key].slice(0, -1)
             }));
-            
-            // NOUVEAU : Vérifier si case devient vide et supprimer couleur si nécessaire
-            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
         }
     };
 
@@ -1387,11 +1191,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         const newList = [...(apprenantsParCase[key] || [])];
         newList[selectIndex] = value;
         setApprenantsParCase(prev => ({ ...prev, [key]: newList }));
-        
-        // NOUVEAU : Si on supprime un apprenant (valeur vide), vérifier si case devient vide
-        if (value === "") {
-            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
-        }
     };
 
     const handleAddApprenant = (dayIndex, lieuIndex, creneau) => {
@@ -1410,9 +1209,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
                 ...prev,
                 [key]: prev[key].slice(0, -1)
             }));
-            
-            // NOUVEAU : Vérifier si case devient vide et supprimer couleur si nécessaire
-            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
         }
     };
 
@@ -1468,152 +1264,6 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         }
     };
 
-    // FONCTION DE DUPLICATION SEMAINE SUIVANTE
-    const dupliquerVersProchaineSemaine = async () => {
-        try {
-            setIsLoading(true);
-            setMessage('🔄 Duplication vers la semaine suivante...');
-
-            // Calculer les dates de la semaine courante et suivante
-            const weekDates = getWeekDates(currentDate);
-            
-            const prochaineDate = new Date(currentDate);
-            prochaineDate.setDate(currentDate.getDate() + 7);
-            const prochainesWeekDates = getWeekDates(prochaineDate);
-
-            const planningsDupliques = [];
-            const planningFormateursDupliques = [];
-            let formateursExclusPourAbsence = 0;
-            let creneauxDupliques = 0;
-
-            // Parcourir tous les créneaux actuels
-            jours.forEach((jour, dayIndex) => {
-                const dateOriginale = weekDates[dayIndex];
-                const dateDestination = prochainesWeekDates[dayIndex];
-                
-                (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
-                    ['Matin', 'AM'].forEach((creneau) => {
-                        const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                        
-                        const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
-                        const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
-                        const lieuId = lieuxSelectionnes[key] || null;
-                        const salarieId = salariesSelectionnes[key] || null;
-                        
-                        if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
-                            // Filtrer les formateurs non absents pour la semaine suivante
-                            const formateursDisponibles = formateursIds.filter(formateurId => {
-                                const estAbsent = isFormateurAbsent(formateurId, dateDestination);
-                                if (estAbsent) formateursExclusPourAbsence++;
-                                return !estAbsent;
-                            });
-
-                            // Si au moins un élément subsiste, créer le créneau dupliqué
-                            if (formateursDisponibles.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
-                                let creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
-                                creneauxDupliques++;
-
-                                planningsDupliques.push({
-                                    date: dateDestination,
-                                    jour: jour,
-                                    creneau: creneauDB,
-                                    lieu_index: lieuIndex,
-                                    lieu_id: lieuId,
-                                    salarie_id: salarieId || null,
-                                    formateurs_ids: formateursDisponibles,
-                                    apprenants_ids: apprenantsIds,
-                                    statut_planning: 'brouillon'
-                                });
-
-                                // Ajouter les formateurs disponibles au planning formateurs
-                                formateursDisponibles.forEach(formateurId => {
-                                    const lieuInfo = lieux.find(l => l.id === lieuId);
-                                    
-                                    planningFormateursDupliques.push({
-                                        formateur_id: formateurId,
-                                        date: dateDestination,
-                                        creneau: creneauDB,
-                                        lieu_nom: lieuInfo ? lieuInfo.nom : '',
-                                        lieu_initiales: lieuInfo ? lieuInfo.initiale : '',
-                                        statut: 'brouillon'
-                                    });
-                                });
-                            }
-                        }
-                    });
-                });
-            });
-
-            if (planningsDupliques.length > 0) {
-                // Supprimer les plannings existants pour la semaine suivante
-                const { error: deleteError } = await supabase
-                    .from('planning_hebdomadaire')
-                    .delete()
-                    .in('date', prochainesWeekDates);
-
-                if (deleteError) {
-                    console.error('Erreur suppression planning semaine suivante:', deleteError);
-                    throw deleteError;
-                }
-
-                // Supprimer les plannings formateurs existants pour la semaine suivante
-                const { error: deleteFormateursError } = await supabase
-                    .from('planning_formateurs_hebdo')
-                    .delete()
-                    .in('date', prochainesWeekDates);
-
-                if (deleteFormateursError) {
-                    console.error('Erreur suppression planning formateurs semaine suivante:', deleteFormateursError);
-                    throw deleteFormateursError;
-                }
-
-                // Insérer les nouveaux plannings
-                const { error: insertError } = await supabase
-                    .from('planning_hebdomadaire')
-                    .insert(planningsDupliques);
-
-                if (insertError) {
-                    console.error('Erreur insertion planning dupliqué:', insertError);
-                    throw insertError;
-                }
-
-                // Insérer les plannings formateurs
-                if (planningFormateursDupliques.length > 0) {
-                    const { error: insertFormateursError } = await supabase
-                        .from('planning_formateurs_hebdo')
-                        .insert(planningFormateursDupliques);
-
-                    if (insertFormateursError) {
-                        console.error('Erreur insertion planning formateurs dupliqué:', insertFormateursError);
-                        throw insertFormateursError;
-                    }
-                }
-
-                const semaineSuivante = Math.ceil(((prochaineDate - new Date(prochaineDate.getFullYear(), 0, 1)) / 86400000 + new Date(prochaineDate.getFullYear(), 0, 1).getDay() + 1) / 7);
-                
-                setMessage(`✅ Planning dupliqué vers semaine ${semaineSuivante} !
-${creneauxDupliques} créneaux dupliqués
-${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affectations formateurs exclues (absences)` : '🎯 Toutes les affectations ont été dupliquées'}`);
-                
-                setTimeout(() => setMessage(''), 6000);
-
-                // Optionnel : naviguer vers la semaine suivante
-                // setCurrentDate(prochaineLundi);
-                
-            } else {
-                setMessage('ℹ️ Aucun créneau à dupliquer trouvé');
-                setTimeout(() => setMessage(''), 3000);
-            }
-
-        } catch (error) {
-            console.error('Erreur lors de la duplication:', error);
-            setMessage(`❌ Erreur duplication: ${error.message}`);
-            setTimeout(() => setMessage(''), 5000);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     if (!dataLoaded) {
         return <SkeletonPlanningLoader />;
     }
@@ -1621,156 +1271,12 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
     return (
         <>
             <style jsx>{`
-                @keyframes shimmer {
-                    0% { background-position: -200% 0; }
-                    100% { background-position: 200% 0; }
-                }
-                
                 @media print {
-                    /* CSS PRINT MINIMAL - VERSION RESET */
-                    .no-print { 
-                        display: none !important; 
-                    }
-                    .no-print * { 
-                        display: none !important; 
-                    }
-                    button { 
-                        display: none !important; 
-                    }
-                    
-                    body { 
-                        background: white !important;
-                    }
-                    
-                    .print-title { 
-                        display: block !important; 
-                        text-align: center; 
-                        font-size: 18px; 
-                        font-weight: bold; 
-                        margin-bottom: 20px; 
-                        color: black !important; 
-                    }
-
-                    /* ÉTAPE 1 - Adaptation automatique colonnes */
-                    table {
-                        width: 100% !important;
-                        table-layout: fixed !important;
-                    }
-                    
-                    /* Réduction globale du contenu */
-                    @page {
-                        size: A4 landscape;
-                        margin: 8mm;
-                    }
-                    
-                    /* Forcer tout compact */
-                    * {
-                        font-size: 6pt !important;
-                        line-height: 1 !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-                    
-                    td, th {
-                        width: auto !important;
-                        min-width: unset !important;
-                        max-width: none !important;
-                    }
-                    
-                    /* Alignement des blocs formateurs/apprenants */
-                    td {
-                        vertical-align: top !important;
-                    }
-                    
-                    /* Hauteur minimale pour les sections formateurs - RÉDUITE */
-                    div[style*="rgba(255, 255, 255, 0.2)"] {
-                        min-height: 80px !important;
-                        display: block !important;
-                    }
-                    
-                    /* Forcer les apprenants à s'aligner - ESPACEMENT RÉDUIT */
-                    div[style*="rgba(34, 197, 94"] {
-                        margin-top: 3px !important;
-                        border-top: 1px solid #3b82f6 !important;
-                    }
-                    
-                    /* Préserver les couleurs d'impression */
-                    * {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                        color-adjust: exact !important;
-                    }
-                    
-                    /* Colonne créneaux divisée par 3 */
-                    td:first-child, th:first-child {
-                        width: 13px !important;
-                        text-align: center !important;
-                        font-weight: bold !important;
-                    }
-                    
-                    /* Forcer centrage vertical parfait colonne créneaux */
-                    td:first-child {
-                        vertical-align: middle !important;
-                        text-align: center !important;
-                        display: table-cell !important;
-                        height: auto !important;
-                    }
-                    
-                    /* Assurer hauteur égale pour M et AM */
-                    tbody tr:nth-child(1) td:first-child,
-                    tbody tr:nth-child(2) td:first-child {
-                        height: 50% !important;
-                        vertical-align: middle !important;
-                    }
-                    
-                    /* Taille des selects */
-                    select {
-                        height: 15px !important;
-                        padding: 0px !important;
-                        font-size: 8px !important;
-                        line-height: 1 !important;
-                        background: transparent !important;
-                    }
-                    
-                    /* Masquer complètement le contenu des cellules sans lieu */
-                    td[style*="backgroundColor: white"] > div,
-                    td[style*="backgroundColor: #ffffff"] > div,
-                    td[style*="backgroundColor: rgb(255, 255, 255)"] > div,
-                    td[style*="background-color: white"] > div,
-                    td[style*="background-color: #ffffff"] > div,
-                    td[style*="background-color: rgb(255, 255, 255)"] > div {
-                        visibility: hidden !important;
-                        height: 0 !important;
-                        overflow: hidden !important;
-                    }
-                    
-                    /* Masquer aussi les selects vides dans ces cellules */
-                    td[style*="white"] select,
-                    td[style*="#ffffff"] select,
-                    td[style*="rgb(255, 255, 255)"] select {
-                        display: none !important;
-                    }
+                    .no-print { display: none !important; }
+                    body { background: white !important; }
+                    .print-title { display: block !important; text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 20px; color: black !important; }
                 }
-                
-                /* ✅ TITRE CACHÉ EN MODE NORMAL */
-                .print-title { 
-                    display: none; 
-                }
-                
-                /* ⭐ NOUVEAU : MASQUER TEXTES IMPRESSION EN MODE NORMAL */
-                .print-only {
-                    display: none;
-                }
-                
-                /* Forcer couleur grise pour MPT si besoin */
-                td[style*="background-color: white"] {
-                    background-color: #f3f4f6 !important;
-                }
-                
-                /* Forcer texte noir pour TOUS les selects */
-                select {
-                    color: #000000 !important;
-                }
+                .print-title { display: none; }
             `}</style>
 
             <div style={{
@@ -1991,23 +1497,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         </button>
 
                         <button
-                            onClick={dupliquerVersProchaineSemaine}
-                            disabled={isLoading}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#8b5cf6',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
-                            }}
-                        >
-                            {isLoading ? 'Duplication...' : '📋 Dupliquer S+1'}
-                        </button>
-
-                        <button
                             onClick={handleValiderTransmettre}
                             disabled={isLoading}
                             style={{
@@ -2047,7 +1536,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     </div>
                 )}
 
-                <div style={{
+                <div className="planning-container" style={{
                     backgroundColor: 'white',
                     borderRadius: '12px',
                     margin: '0 20px 20px 20px',
@@ -2179,11 +1668,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 <option key={lieu.id} value={lieu.id}>{lieu.nom}</option>
                                                             ))}
                                                         </select>
-                                                        {/* ⭐ VERSION IMPRESSION */}
-                                                        <div className="print-only print-text">
-                                                            {selectedLieuId ? getNomLieu(selectedLieuId) : 
-                                                             <span className="print-text-empty">Aucun lieu</span>}
-                                                        </div>
 
                                                         <select 
                                                             style={{
@@ -2205,11 +1689,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 </option>
                                                             ))}
                                                         </select>
-                                                        {/* ⭐ VERSION IMPRESSION */}
-                                                        <div className="print-only print-text">
-                                                            {salariesSelectionnes[cellKey] ? getNomSalarie(salariesSelectionnes[cellKey]) : 
-                                                             <span className="print-text-empty">Aucun salarié</span>}
-                                                        </div>
 
                                                         <div style={{
                                                             padding: '6px',
@@ -2217,7 +1696,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             borderRadius: '4px',
                                                             border: '1px solid rgba(255, 255, 255, 0.3)'
                                                         }}>
-                                                            <div style={{ 
+                                                            <div className="formateur-header" style={{ 
                                                                 fontSize: '10px', 
                                                                 fontWeight: '600', 
                                                                 marginBottom: '4px',
@@ -2229,48 +1708,46 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 const formateursDisponibles = getFormateursDisponibles(jour, creneau, selectedLieuId);
                                                                 
                                                                 return (
-                                                                    <React.Fragment key={i}>
-                                                                        <select
-                                                                            style={{
-                                                                                width: '100%',
-                                                                                padding: '3px',
-                                                                                border: '1px solid #d1d5db',
-                                                                                borderRadius: '3px',
-                                                                                fontSize: '10px',
-                                                                                background: couleursEnregistrees[cellKey] || 'rgba(255,255,255,0.9)',
-                                                                                color: '#374151',
-                                                                                marginBottom: '3px'
-                                                                            }}
-                                                                            value={selectedId}
-                                                                            onChange={(e) => handleFormateurChange(dayIndex, lieuIndex, creneau, i, e.target.value)}
-                                                                        >
-                                                                            <option value="">Formateur</option>
-                                                                            {formateursDisponibles
-                                                                                .filter(f => {
-                                                                                    const currentSelections = formateursParCase[cellKey] || [];
-                                                                                    return !currentSelections.includes(f.id) || currentSelections[i] === f.id;
-                                                                                })
-                                                                                .map(f => (
-                                                                                    <option 
-                                                                                        key={f.id} 
-                                                                                        value={f.id}
-                                                                                        style={{
-                                                                                            backgroundColor: f.statut === 'disponible' ? '#dbeafe' : 
-                                                                                                          f.statut === 'dispo_except' ? '#fef3c7' : 'white',
-                                                                                            color: f.statut === 'disponible' ? '#1e40af' : 
-                                                                                                   f.statut === 'dispo_except' ? '#92400e' : '#374151'
-                                                                                        }}
-                                                                                    >
-                                                                                        {f.prenom} {f.nom}
-                                                                                    </option>
-                                                                                ))}
-                                                                        </select>
-                                                                        {/* ⭐ VERSION IMPRESSION */}
-                                                                        <div className="print-only print-text">
-                                                                            {selectedId ? getNomFormateur(selectedId) : 
-                                                                             <span className="print-text-empty">Aucun formateur</span>}
-                                                                        </div>
-                                                                    </React.Fragment>
+                                                                    <select
+                                                                        key={i}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            padding: '3px',
+                                                                            border: '1px solid #d1d5db',
+                                                                            borderRadius: '3px',
+                                                                            fontSize: '10px',
+                                                                            background: 'rgba(255,255,255,0.9)',
+                                                                            color: '#374151',
+                                                                            marginBottom: '3px'
+                                                                        }}
+                                                                        value={selectedId}
+                                                                        onChange={(e) => handleFormateurChange(dayIndex, lieuIndex, creneau, i, e.target.value)}
+                                                                    >
+                                                                        <option value="">Formateur</option>
+                                                                        {formateursDisponibles
+                                                                            .filter(f => {
+                                                                                const currentSelections = formateursParCase[cellKey] || [];
+                                                                                return !currentSelections.includes(f.id) || currentSelections[i] === f.id;
+                                                                            })
+                                                                            .map(f => (
+                                                                                <option 
+                                                                                    key={f.id} 
+                                                                                    value={f.id}
+                                                                                    style={{
+                                                                                        backgroundColor: f.statut === 'disponible' ? '#dbeafe' : 
+                                                                                                      f.statut === 'dispo_except' ? '#fef3c7' : 'white',
+                                                                                        color: f.statut === 'disponible' ? '#1e40af' : 
+                                                                                               f.statut === 'dispo_except' ? '#92400e' : '#374151'
+                                                                                    }}
+                                                                                >
+                                                                                    {f.prenom} {f.nom}
+                                                                                    {f.statut === 'dispo_except' ? ' (EXCEPT)' : 
+                                                                                     f.statut === 'disponible' ? 
+                                                                                        (f.lieuSpecifique ? ' (LIEU)' : ' (S/P)') : ''}
+                                                                                    {f.source === 'exception_validee_roi' ? ' [ROI]' : ''}
+                                                                                </option>
+                                                                            ))}
+                                                                    </select>
                                                                 );
                                                             })}
 
@@ -2310,23 +1787,85 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             </div>
                                                         </div>
 
-                                                        {/* RÉACTIVATION PROGRESSIVE - Étape 1: Activation de base */}
-                                                        <MenuApprenants 
-                                                            cellKey={cellKey}
-                                                            creneauData={{
-                                                                date: getWeekDates(currentDate)[dayIndex],
-                                                                jour: jours[dayIndex],
-                                                                creneau: creneau,
-                                                                lieu_id: selectedLieuId
-                                                            }}
-                                                            apprenantsParCase={apprenantsParCase}
-                                                            apprenants={apprenants}
-                                                            onApprenantChange={handleApprenantChange}
-                                                            onAddApprenant={handleAddApprenant}
-                                                            onRemoveApprenant={handleRemoveApprenant}
-                                                            disabled={!selectedLieuId}
-                                                            couleurEnregistree={couleursEnregistrees[cellKey]}
-                                                        />
+                                                        <div style={{
+                                                            padding: '6px',
+                                                            background: 'rgba(255, 255, 255, 0.2)',
+                                                            borderRadius: '4px',
+                                                            border: '1px solid rgba(255, 255, 255, 0.3)'
+                                                        }}>
+                                                            <div style={{ 
+                                                                fontSize: '10px', 
+                                                                fontWeight: '600', 
+                                                                marginBottom: '4px',
+                                                                textAlign: 'center'
+                                                            }}>
+                                                                APPRENANTS
+                                                            </div>
+                                                            {(apprenantsParCase[cellKey] || [""]).map((selectedId, i) => (
+                                                                <select
+                                                                    key={i}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        padding: '3px',
+                                                                        border: '1px solid #d1d5db',
+                                                                        borderRadius: '3px',
+                                                                        fontSize: '10px',
+                                                                        background: 'rgba(255,255,255,0.9)',
+                                                                        color: '#374151',
+                                                                        marginBottom: '3px'
+                                                                    }}
+                                                                    value={selectedId}
+                                                                    onChange={(e) => handleApprenantChange(dayIndex, lieuIndex, creneau, i, e.target.value)}
+                                                                >
+                                                                    <option value="">Apprenant</option>
+                                                                    {apprenants
+                                                                        .filter(a => {
+                                                                            const currentSelections = apprenantsParCase[cellKey] || [];
+                                                                            return !currentSelections.includes(a.id) || currentSelections[i] === a.id;
+                                                                        })
+                                                                        .map(a => (
+                                                                            <option key={a.id} value={a.id}>
+                                                                                {a.prenom} {a.nom}
+                                                                            </option>
+                                                                        ))}
+                                                                </select>
+                                                            ))}
+
+                                                            <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+                                                                <button
+                                                                    onClick={() => handleAddApprenant(dayIndex, lieuIndex, creneau)}
+                                                                    style={{
+                                                                        padding: '3px 6px',
+                                                                        background: '#3b82f6',
+                                                                        color: 'white',
+                                                                        border: 'none',
+                                                                        borderRadius: '3px',
+                                                                        fontSize: '10px',
+                                                                        cursor: 'pointer',
+                                                                        fontWeight: 'bold'
+                                                                    }}
+                                                                >
+                                                                    +
+                                                                </button>
+                                                                {(apprenantsParCase[cellKey] || []).length > 1 && (
+                                                                    <button
+                                                                        onClick={() => handleRemoveApprenant(dayIndex, lieuIndex, creneau)}
+                                                                        style={{
+                                                                            padding: '3px 6px',
+                                                                            background: '#ef4444',
+                                                                            color: 'white',
+                                                                            border: 'none',
+                                                                            borderRadius: '3px',
+                                                                            fontSize: '10px',
+                                                                            cursor: 'pointer',
+                                                                            fontWeight: 'bold'
+                                                                        }}
+                                                                    >
+                                                                        −
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
                                             );

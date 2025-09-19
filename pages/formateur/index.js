@@ -44,14 +44,7 @@ export default function AccueilFormateur() {
     }
 
     const handleFermer = async () => {
-        const confirmation = window.confirm(
-            "Voulez-vous vraiment fermer votre session ?\n\n" +
-            "Vous devrez vous reconnecter la prochaine fois."
-        )
-        
-        if (confirmation) {
-            await logout()
-        }
+        await logout()
     }
 
     if (isLoading) {
@@ -219,6 +212,26 @@ export default function AccueilFormateur() {
                         onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
                     >
                         Changer de mot de passe
+                    </button>
+
+                    <button
+                        onClick={() => router.push('/formateur/ma-presence')}
+                        style={{
+                            backgroundColor: '#059669',
+                            color: 'white',
+                            padding: '20px 15px',
+                            borderRadius: '15px',
+                            border: 'none',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 15px rgba(5, 150, 105, 0.3)',
+                            transition: 'transform 0.2s ease'
+                        }}
+                        onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+                        onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+                    >
+                        Ma Présence
                     </button>
 
                     <button

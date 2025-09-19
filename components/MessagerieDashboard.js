@@ -483,14 +483,34 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
         alignItems: 'center',
         marginBottom: '20px'
       }}>
-        <h2 style={{
-          fontSize: '20px',
-          fontWeight: 'bold',
-          color: '#f59e0b',
-          margin: 0
-        }}>
-          Messagerie ({messages.length} messages, {messagesNonLus} non lus)
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h2 style={{
+            fontSize: '20px',
+            fontWeight: 'bold',
+            color: '#f59e0b',
+            margin: 0
+          }}>
+            Messagerie ({messages.length} messages, {messagesNonLus} non lus)
+          </h2>
+          <button
+            onClick={() => router.push('/')}
+            style={{
+              padding: '6px 10px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            🏠
+          </button>
+        </div>
         <button
           onClick={() => setShowNewMessage(!showNewMessage)}
           disabled={sending}

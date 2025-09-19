@@ -1386,6 +1386,26 @@ ${messageTransformation}
                                                         >
                                                             Valider
                                                         </button>
+                                                        <button
+                                                            onClick={() => supprimerAbsence(changement.id)}
+                                                            disabled={traitement}
+                                                            style={{
+                                                                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                padding: '10px 20px',
+                                                                borderRadius: '8px',
+                                                                fontWeight: '600',
+                                                                fontSize: '14px',
+                                                                cursor: traitement ? 'not-allowed' : 'pointer',
+                                                                opacity: traitement ? 0.6 : 1,
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px'
+                                                            }}
+                                                        >
+                                                            Supprimer
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     <div style={{

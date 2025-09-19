@@ -16,6 +16,8 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
     const [message, setMessage] = useState('')
     const [isPurging, setIsPurging] = useState(false)
     const [logs, setLogs] = useState([])
+    const [isResetting, setIsResetting] = useState(false)
+    const [resetMessage, setResetMessage] = useState('')
 
     // Configuration des onglets
     const onglets = [
@@ -222,6 +224,73 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
             setMessage('❌ Erreur lors de la purge')
         } finally {
             setIsPurging(false)
+        }
+    }
+
+    // Fonction de réinitialisation mot de passe
+    const resetPassword = async () => {
+        if (!formateurSelectionne) {
+            setResetMessage('⚠️ Aucun formateur sélectionné')
+            setTimeout(() => setResetMessage(''), 3000)
+            return
+        }
+
+        // Confirmation utilisateur
+        const confirmReset = confirm(
+            `🔄 Réinitialiser le mot de passe de ${formateurSelectionne.prenom} ${formateurSelectionne.nom} ?\n\n` +
+            `Le formateur pourra se reconnecter avec son nom de famille : "${formateurSelectionne.nom}"\n\n` +
+            `Son mot de passe personnalisé sera supprimé.\n\n` +
+            `Confirmer la réinitialisation ?`
+        )
+
+        if (!confirmReset) return
+
+        setIsResetting(true)
+        setResetMessage('')
+        ajouterLog(`🔄 DÉBUT RESET PASSWORD: ${formateurSelectionne.prenom} ${formateurSelectionne.nom}`)
+
+        try {
+            // Récupérer le token Supabase de la session admin active
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+            
+            if (sessionError || !session?.access_token) {
+                throw new Error('Session admin expirée')
+            }
+
+            const response = await fetch('/api/admin/reset-formateur-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    formateurId: formateurSelectionne.id,
+                    formateurNom: formateurSelectionne.nom
+                })
+            })
+
+            const data = await response.json()
+
+            if (data.success) {
+                setResetMessage(`✅ ${data.message}`)
+                ajouterLog(`   ✅ Mot de passe réinitialisé avec succès`)
+                ajouterLog(`   🔑 Nouveau mot de passe temporaire: "${data.fallbackPassword}"`)
+                
+                // Auto-clear message après 10 secondes
+                setTimeout(() => setResetMessage(''), 10000)
+            } else {
+                throw new Error(data.error || 'Erreur inconnue')
+            }
+        } catch (error) {
+            console.error('Erreur reset password:', error)
+            const errorMsg = `❌ Erreur: ${error.message}`
+            setResetMessage(errorMsg)
+            ajouterLog(`   ❌ ERREUR: ${error.message}`)
+            
+            // Auto-clear error après 8 secondes
+            setTimeout(() => setResetMessage(''), 8000)
+        } finally {
+            setIsResetting(false)
         }
     }
 
@@ -571,6 +640,58 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                                 lineHeight: '1.3'
                             }}>
                                 ⚠️ Supprime définitivement toutes les données planning
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Bouton Reset Password */}
+                    <div style={{ marginBottom: '24px' }}>
+                        <button
+                            onClick={resetPassword}
+                            disabled={!formateurSelectionne || isResetting || isPurging}
+                            style={{
+                                width: '100%',
+                                padding: '12px 16px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                backgroundColor: (!formateurSelectionne || isResetting || isPurging) ? '#f3f4f6' : '#f59e0b',
+                                color: (!formateurSelectionne || isResetting || isPurging) ? '#9ca3af' : 'white',
+                                cursor: (!formateurSelectionne || isResetting || isPurging) ? 'not-allowed' : 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 'bold',
+                                textAlign: 'center',
+                                transition: 'all 0.2s',
+                                opacity: (!formateurSelectionne || isResetting || isPurging) ? 0.6 : 1
+                            }}
+                        >
+                            {isResetting ? '🔄 Réinitialisation...' : '🔑 RÉINITIALISER MOT DE PASSE'}
+                        </button>
+                        {formateurSelectionne && (
+                            <div style={{
+                                marginTop: '8px',
+                                fontSize: '11px',
+                                color: '#f59e0b',
+                                textAlign: 'center',
+                                lineHeight: '1.3'
+                            }}>
+                                🔑 Le formateur pourra se reconnecter avec : "{formateurSelectionne.nom}"
+                            </div>
+                        )}
+                        
+                        {/* Message de feedback pour reset */}
+                        {resetMessage && (
+                            <div style={{
+                                marginTop: '8px',
+                                padding: '8px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                textAlign: 'center',
+                                backgroundColor: resetMessage.includes('✅') ? '#d1fae5' : '#fee2e2',
+                                color: resetMessage.includes('✅') ? '#065f46' : '#991b1b',
+                                border: '1px solid',
+                                borderColor: resetMessage.includes('✅') ? '#bbf7d0' : '#fecaca'
+                            }}>
+                                {resetMessage}
                             </div>
                         )}
                     </div>
