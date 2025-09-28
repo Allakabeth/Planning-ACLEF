@@ -383,6 +383,19 @@ function getWeekDates(currentDate) {
     return weekDates;
 }
 
+// Fonction pour calculer la largeur adaptative des colonnes
+function calculateColumnWidth(lieuxParJour) {
+    const totalPlages = Object.values(lieuxParJour).reduce((total, lieux) => total + (lieux || []).length, 0);
+    const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const availableWidth = screenWidth - 120; // Marge pour la première colonne et les bordures
+    const maxWidth = 180; // Largeur maximale souhaitée
+    const minWidth = 120; // Largeur minimale pour lisibilité
+
+    if (totalPlages === 0) return 180; // Valeur par défaut
+    const calculatedWidth = Math.max(minWidth, Math.min(maxWidth, availableWidth / totalPlages));
+    return Math.floor(calculatedWidth);
+}
+
 function PlanningCoordo({ user, logout, inactivityTime }) {
     const router = useRouter();
     
@@ -2077,26 +2090,31 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     overflow: 'auto',
                     boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
                 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ backgroundColor: '#f9fafb' }}>
-                                <th style={{ 
-                                    padding: '10px', 
-                                    border: '1px solid #e5e7eb',
-                                    fontWeight: '600',
-                                    fontSize: '13px',
-                                    textAlign: 'center',
-                                    minWidth: '40px',
-                                    maxWidth: '40px'
-                                }}>
-                                </th>
-                                {jours.map((jour, dayIndex) => 
-                                    (lieuxParJour[dayIndex] || []).map((lieuIndex, lieuPos) => (
-                                        <th key={`${dayIndex}-${lieuIndex}`} style={{ 
+                    {(() => {
+                        const columnWidth = calculateColumnWidth(lieuxParJour);
+                        return (
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ backgroundColor: '#f9fafb' }}>
+                                        <th style={{
                                             padding: '10px',
                                             border: '1px solid #e5e7eb',
-                                            minWidth: '180px',
+                                            fontWeight: '600',
+                                            fontSize: '13px',
                                             textAlign: 'center',
+                                            minWidth: '40px',
+                                            maxWidth: '40px'
+                                        }}>
+                                        </th>
+                                        {jours.map((jour, dayIndex) =>
+                                            (lieuxParJour[dayIndex] || []).map((lieuIndex, lieuPos) => (
+                                                <th key={`${dayIndex}-${lieuIndex}`} style={{
+                                                    padding: '10px',
+                                                    border: '1px solid #e5e7eb',
+                                                    minWidth: `${columnWidth}px`,
+                                                    maxWidth: `${columnWidth}px`,
+                                                    width: `${columnWidth}px`,
+                                                    textAlign: 'center',
                                             fontSize: '11px',
                                             backgroundColor: '#f9fafb'
                                         }}>
@@ -2178,7 +2196,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         backgroundColor: backgroundColor,
                                                         color: textColor,
                                                         verticalAlign: 'top',
-                                                        minWidth: '180px'
+                                                        minWidth: `${columnWidth}px`,
+                                                        maxWidth: `${columnWidth}px`,
+                                                        width: `${columnWidth}px`
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2356,8 +2376,10 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                     )}
                                 </tr>
                             ))}
-                        </tbody>
-                    </table>
+                                </tbody>
+                            </table>
+                        );
+                    })()}
                 </div>
             </div>
         </>
