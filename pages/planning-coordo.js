@@ -1125,6 +1125,130 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
         }
     };
 
+    // Fonction pour valider seulement les modifications
+    const handleValiderModifications = async () => {
+        if (!window.confirm('Valider les modifications ? Seuls les formateurs modifiés recevront des notifications.')) return;
+
+        setIsLoading(true);
+
+        try {
+            const weekDates = getWeekDates(currentDate);
+
+            // 1. Récupérer l'état actuel en base
+            const { data: planningActuel } = await supabase
+                .from('planning_hebdomadaire')
+                .select('*')
+                .in('date', weekDates);
+
+            // 2. Identifier les formateurs modifiés
+            const formateursModifies = await identifierFormateursModifies(planningActuel, weekDates);
+
+            // 3. Sauvegarder le planning
+            const stats = await sauvegarderPlanning('validé', weekDates);
+
+            // 4. Appliquer coloration persistante
+            const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
+            setCouleursEnregistrees(nouvellesCouleursEnregistrees);
+
+            // 5. Envoyer messages seulement aux formateurs modifiés
+            if (formateursModifies.length > 0) {
+                await envoyerMessagesModifications(formateursModifies, semaine, weekDates);
+            }
+
+            setMessage(`✅ Modifications validées !
+${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifié(s)
+📧 Messages envoyés aux formateurs modifiés`);
+            setTimeout(() => setMessage(''), 8000);
+
+        } catch (error) {
+            console.error('Erreur lors de la validation des modifications:', error);
+            setMessage(`⚠️ Erreur: ${error.message}`);
+            setTimeout(() => setMessage(''), 5000);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Fonction pour identifier les formateurs modifiés
+    const identifierFormateursModifies = async (planningActuel, weekDates) => {
+        const formateursModifies = new Set();
+
+        // Créer un map des données actuelles en base
+        const planningActuelMap = {};
+        if (planningActuel) {
+            planningActuel.forEach(item => {
+                const key = `${item.jour}-${item.lieu_index}-${item.creneau}`;
+                planningActuelMap[key] = item;
+            });
+        }
+
+        // Comparer avec l'état en cours d'édition
+        jours.forEach((jour, dayIndex) => {
+            (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
+                ['Matin', 'AM'].forEach((creneau) => {
+                    const key = `${dayIndex}-${lieuIndex}-${creneau}`;
+                    const keyDB = `${jour}-${lieuIndex}-${creneau === 'Matin' ? 'matin' : 'AM'}`;
+
+                    const formateursActuels = (formateursParCase[key] || []).filter(id => id !== "");
+                    const planningDB = planningActuelMap[keyDB];
+                    const formateursDB = planningDB?.formateurs_ids || [];
+
+                    // Comparer les listes de formateurs
+                    const sontDifferents = JSON.stringify(formateursActuels.sort()) !== JSON.stringify(formateursDB.sort());
+
+                    if (sontDifferents) {
+                        formateursActuels.forEach(id => formateursModifies.add(id));
+                        formateursDB.forEach(id => formateursModifies.add(id));
+                    }
+                });
+            });
+        });
+
+        return Array.from(formateursModifies);
+    };
+
+    // Fonction envoi messages pour modifications
+    const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates) => {
+        try {
+            const { data: affectations } = await supabase
+                .from('planning_formateurs_hebdo')
+                .select('formateur_id, date, creneau, lieu_nom')
+                .in('date', weekDates)
+                .in('formateur_id', formateursModifies)
+                .eq('statut', 'attribue');
+
+            if (affectations && affectations.length > 0) {
+                const affectationsParFormateur = {};
+                affectations.forEach(aff => {
+                    if (!affectationsParFormateur[aff.formateur_id]) {
+                        affectationsParFormateur[aff.formateur_id] = [];
+                    }
+                    affectationsParFormateur[aff.formateur_id].push(aff);
+                });
+
+                for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
+                    const formateur = formateurs.find(f => f.id === formateurId);
+                    if (formateur) {
+                        const creneauxDetail = affectationsFormateur.map(aff =>
+                            `${aff.date} ${aff.creneau} à ${aff.lieu_nom}`
+                        ).join('\n');
+
+                        await supabase.from('messages').insert({
+                            expediteur: 'Coordination ACLEF',
+                            destinataire_id: formateurId,
+                            objet: `Planning modifié - semaine ${semaine}`,
+                            contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\nVos nouveaux créneaux :\n${creneauxDetail}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
+                            type_expediteur: 'admin'
+                        });
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Erreur envoi messages modifications:', error);
+            throw error;
+        }
+    };
+
     // Fonction envoi messages validation
     const envoyerMessagesValidation = async (stats, semaine, weekDates) => {
         try {
@@ -1919,7 +2043,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         </div>
                     </div>
 
-                    <div className="no-print" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div className="no-print" style={{ display: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <label style={{ fontSize: '12px', fontWeight: '500', color: '#374151' }}>
                                 Afficher :
@@ -1941,7 +2065,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                 <option value="exceptionnelles">Dispo exceptionnelles</option>
                             </select>
                         </div>
-                        
+                    </div>
+
+                    <div className="no-print" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button
                             onClick={() => changeWeek(-1)}
                             style={{
@@ -1993,39 +2119,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
 
                     <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
                         <button
-                            onClick={handleEnregistrerBrouillon}
-                            disabled={isLoading}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#6b7280',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
-                            }}
-                        >
-                            {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
-                        </button>
-
-                        <button
-                            onClick={logout}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: '#dc2626',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            🚪 Déconnexion
-                        </button>
-
-                        <button
                             onClick={dupliquerVersProchaineSemaine}
                             disabled={isLoading}
                             style={{
@@ -2043,6 +2136,23 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         </button>
 
                         <button
+                            onClick={handleEnregistrerBrouillon}
+                            disabled={isLoading}
+                            style={{
+                                padding: '6px 16px',
+                                backgroundColor: isLoading ? '#94a3b8' : '#6b7280',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                            }}
+                        >
+                            {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
+                        </button>
+
+                        <button
                             onClick={handleValiderTransmettre}
                             disabled={isLoading}
                             style={{
@@ -2057,6 +2167,39 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             }}
                         >
                             {isLoading ? 'Validation...' : 'Valider & Transmettre'}
+                        </button>
+
+                        <button
+                            onClick={handleValiderModifications}
+                            disabled={isLoading}
+                            style={{
+                                padding: '6px 16px',
+                                backgroundColor: isLoading ? '#94a3b8' : '#f59e0b',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                            }}
+                        >
+                            {isLoading ? 'Validation...' : '🔄 Valider Modifications'}
+                        </button>
+
+                        <button
+                            onClick={logout}
+                            style={{
+                                padding: '6px 16px',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            🚪 Déconnexion
                         </button>
                     </div>
                 </div>
