@@ -959,8 +959,8 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
                 newLieuxParJour[dayIndex].forEach(lieuIndex => {
                     ['Matin', 'AM'].forEach((creneau) => {
                         const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                        newApprenantsParCase[key] = [""];
-                        newFormateursParCase[key] = [""];
+                        newApprenantsParCase[key] = [];
+                        newFormateursParCase[key] = [];
                         newLieuxSelectionnes[key] = "";
                         newSalariesSelectionnes[key] = "";
                     });
@@ -976,10 +976,10 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
                         const key = `${dayIndex}-${lieuIndex}-${creneau}`;
 
                         if (item.formateurs_ids && item.formateurs_ids.length > 0) {
-                            newFormateursParCase[key] = [...item.formateurs_ids.filter(id => id), ""];
+                            newFormateursParCase[key] = item.formateurs_ids.filter(id => id);
                         }
                         if (item.apprenants_ids && item.apprenants_ids.length > 0) {
-                            newApprenantsParCase[key] = [...item.apprenants_ids.filter(id => id), ""];
+                            newApprenantsParCase[key] = item.apprenants_ids.filter(id => id);
                         }
                         if (item.lieu_id) {
                             newLieuxSelectionnes[key] = item.lieu_id;
@@ -1393,12 +1393,12 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
     const handleRemoveFormateur = (dayIndex, lieuIndex, creneau) => {
         const key = `${dayIndex}-${lieuIndex}-${creneau}`;
         const currentList = formateursParCase[key] || [];
-        if (currentList.length > 1) {
+        if (currentList.length > 0) {
             setFormateursParCase(prev => ({
                 ...prev,
                 [key]: prev[key].slice(0, -1)
             }));
-            
+
             // NOUVEAU : Vérifier si case devient vide et supprimer couleur si nécessaire
             setTimeout(() => verifierEtSupprimerCouleur(key), 0);
         }
@@ -1427,12 +1427,12 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
     const handleRemoveApprenant = (dayIndex, lieuIndex, creneau) => {
         const key = `${dayIndex}-${lieuIndex}-${creneau}`;
         const currentList = apprenantsParCase[key] || [];
-        if (currentList.length > 1) {
+        if (currentList.length > 0) {
             setApprenantsParCase(prev => ({
                 ...prev,
                 [key]: prev[key].slice(0, -1)
             }));
-            
+
             // NOUVEAU : Vérifier si case devient vide et supprimer couleur si nécessaire
             setTimeout(() => verifierEtSupprimerCouleur(key), 0);
         }
@@ -1449,8 +1449,8 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
 
         ['Matin', 'AM'].forEach((creneau) => {
             const key = `${dayIndex}-${newLieuIndex}-${creneau}`;
-            setApprenantsParCase(prev => ({ ...prev, [key]: [""] }));
-            setFormateursParCase(prev => ({ ...prev, [key]: [""] }));
+            setApprenantsParCase(prev => ({ ...prev, [key]: [] }));
+            setFormateursParCase(prev => ({ ...prev, [key]: [] }));
             setLieuxSelectionnes(prev => ({ ...prev, [key]: "" }));
             setSalariesSelectionnes(prev => ({ ...prev, [key]: "" }));
         });
@@ -2247,7 +2247,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             }}>
                                                                 FORMATEURS
                                                             </div>
-                                                            {(formateursParCase[cellKey] || [""]).map((selectedId, i) => {
+                                                            {(formateursParCase[cellKey] || []).map((selectedId, i) => {
                                                                 const formateursDisponibles = getFormateursDisponibles(jour, creneau, selectedLieuId);
                                                                 
                                                                 return (
@@ -2312,7 +2312,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 >
                                                                     +
                                                                 </button>
-                                                                {(formateursParCase[cellKey] || []).length > 1 && (
+                                                                {(formateursParCase[cellKey] || []).length > 0 && (
                                                                     <button
                                                                         onClick={() => handleRemoveFormateur(dayIndex, lieuIndex, creneau)}
                                                                         style={{

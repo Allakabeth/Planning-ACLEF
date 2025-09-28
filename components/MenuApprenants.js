@@ -222,7 +222,7 @@ export default function MenuApprenants({
   const lieuIdx = parseInt(lieuIndex);
 
   // Liste actuelle des apprenants sélectionnés pour cette case
-  const selectedApprenants = apprenantsParCase[cellKey] || [''];
+  const selectedApprenants = apprenantsParCase[cellKey] || [];
 
   return (
     <>
@@ -334,7 +334,7 @@ export default function MenuApprenants({
         >
           +
         </button>
-        {selectedApprenants.length > 1 && (
+        {selectedApprenants.length > 0 && (
           <button
             onClick={() => onRemoveApprenant(dayIdx, lieuIdx, creneauName)}
             style={{
