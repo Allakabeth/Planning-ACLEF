@@ -18,6 +18,8 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
     const [logs, setLogs] = useState([])
     const [isResetting, setIsResetting] = useState(false)
     const [resetMessage, setResetMessage] = useState('')
+    const [absencesEnAttente, setAbsencesEnAttente] = useState([])
+    const [isValidating, setIsValidating] = useState(false)
 
     // Configuration des onglets
     const onglets = [
@@ -77,14 +79,34 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
         }
     }
 
+    const chargerAbsencesEnAttente = async (formateurId) => {
+        try {
+            const { data, error } = await supabase
+                .from('absences_formateurs')
+                .select('*')
+                .eq('formateur_id', formateurId)
+                .eq('statut', 'en_attente')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+
+            setAbsencesEnAttente(data || [])
+            console.log(`📋 ${data?.length || 0} absences en attente pour ce formateur`)
+        } catch (error) {
+            console.error('Erreur chargement absences:', error)
+        }
+    }
+
     const handleFormateurChange = (formateurId) => {
         const formateur = formateurs.find(f => f.id === formateurId)
         setFormateurSelectionne(formateur)
         setMessage('')
         setLogs([])
-        
+        setAbsencesEnAttente([])
+
         if (formateur) {
             console.log(`👤 Formateur sélectionné: ${formateur.prenom} ${formateur.nom}`)
+            chargerAbsencesEnAttente(formateur.id)
         }
     }
 
@@ -99,6 +121,10 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
     // ✅ Callbacks pour les composants
     const handleSuccess = (successMessage) => {
         setMessage(successMessage)
+        // Recharger les absences en attente
+        if (formateurSelectionne) {
+            chargerAbsencesEnAttente(formateurSelectionne.id)
+        }
         // Auto-clear message après 5 secondes
         setTimeout(() => setMessage(''), 5000)
     }
@@ -107,6 +133,265 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
         setMessage(errorMessage)
         // Auto-clear message après 5 secondes
         setTimeout(() => setMessage(''), 5000)
+    }
+
+    // 👑 FONCTION ROI - COMMUNICATION AVEC SYSTÈMES (copié de valider-changements.js)
+    const commanderSystemes = (action, formateurId, dateStr, details = {}) => {
+        const commande = {
+            action,
+            formateur_id: formateurId,
+            date: dateStr,
+            timestamp: Date.now(),
+            details,
+            roi: 'prise_controle_formateur'
+        }
+
+        console.log('👑 ROI COMMANDE:', commande)
+
+        localStorage.setItem('roiCommande', JSON.stringify(commande))
+
+        setTimeout(() => {
+            const currentCommande = localStorage.getItem('roiCommande')
+            if (currentCommande) {
+                const parsed = JSON.parse(currentCommande)
+                if (parsed.timestamp === commande.timestamp) {
+                    localStorage.removeItem('roiCommande')
+                    console.log('🧹 Commande ROI nettoyée automatiquement')
+                }
+            }
+        }, 5000)
+
+        return commande
+    }
+
+    // 👑 FONCTION ROI - NETTOYAGE AFFECTATIONS (copié de valider-changements.js)
+    const nettoyerAffectations = async (formateurId, dateStr, creneau = null) => {
+        console.log(`🧹 ROI NETTOIE : ${formateurId} le ${dateStr} ${creneau || 'tous créneaux'}`)
+
+        let affectationsNettoyees = 0
+        let casesModifiees = 0
+
+        try {
+            // 1. NETTOYER planning_hebdomadaire
+            let query = supabase
+                .from('planning_hebdomadaire')
+                .select('*')
+                .eq('date', dateStr)
+
+            if (creneau) {
+                const creneauDB = creneau === 'Matin' ? 'matin' : 'AM'
+                query = query.eq('creneau', creneauDB)
+            }
+
+            const { data: plannings, error: planningsError } = await query
+
+            if (planningsError) throw planningsError
+
+            for (let planning of plannings || []) {
+                if (planning.formateurs_ids && planning.formateurs_ids.includes(formateurId)) {
+                    const nouveauxFormateurs = planning.formateurs_ids.filter(id => id !== formateurId)
+
+                    const { error: updateError } = await supabase
+                        .from('planning_hebdomadaire')
+                        .update({ formateurs_ids: nouveauxFormateurs })
+                        .eq('id', planning.id)
+
+                    if (updateError) throw updateError
+
+                    casesModifiees++
+                    console.log(`✅ Retiré de planning_hebdomadaire case ${planning.jour} ${planning.creneau}`)
+                }
+            }
+
+            // 2. NETTOYER planning_formateurs_hebdo
+            let deleteQuery = supabase
+                .from('planning_formateurs_hebdo')
+                .delete()
+                .eq('formateur_id', formateurId)
+                .eq('date', dateStr)
+
+            if (creneau) {
+                const creneauDB = creneau === 'Matin' ? 'matin' : 'AM'
+                deleteQuery = deleteQuery.eq('creneau', creneauDB)
+            }
+
+            const { data: deleted, error: deleteError } = await deleteQuery.select()
+
+            if (deleteError) throw deleteError
+
+            affectationsNettoyees = deleted?.length || 0
+            console.log(`✅ Supprimé ${affectationsNettoyees} affectations planning_formateurs_hebdo`)
+
+            return {
+                affectationsNettoyees,
+                casesModifiees,
+                success: true
+            }
+
+        } catch (error) {
+            console.error('❌ Erreur nettoyage affectations:', error)
+            throw new Error(`Erreur nettoyage: ${error.message}`)
+        }
+    }
+
+    // 👑 FONCTION ROI - MESSAGES AUTOMATIQUES (copié de valider-changements.js)
+    const envoyerConfirmationFormateur = async (formateur, absence, action) => {
+        try {
+            let contenu = ''
+            let objet = ''
+
+            switch(action) {
+                case 'validee':
+                    objet = `Absence validée - ${absence.date_debut}`
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence du ${absence.date_debut} au ${absence.date_fin} a été validée par le coordinateur.\n\nType: ${absence.type}\nVotre planning a été mis à jour automatiquement.\n\nCordialement,\nL'équipe ACLEF`
+                    break
+                case 'supprimee':
+                    objet = `Absence supprimée - ${absence.date_debut}`
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre absence du ${absence.date_debut} au ${absence.date_fin} a été supprimée.\n\nVous redevenez disponible selon votre planning type habituel.\n\nCordialement,\nL'équipe ACLEF`
+                    break
+                default:
+                    throw new Error(`Action message inconnue: ${action}`)
+            }
+
+            const { error } = await supabase.from('messages').insert({
+                expediteur: 'Coordination ACLEF',
+                destinataire_id: formateur.id,
+                objet: objet,
+                contenu: contenu,
+                type: 'planning'
+            })
+
+            if (error) throw error
+
+            console.log(`📧 Message ${action} envoyé à ${formateur.prenom}`)
+            return true
+
+        } catch (error) {
+            console.error('❌ Erreur envoi message:', error)
+            throw new Error(`Erreur message: ${error.message}`)
+        }
+    }
+
+    // 👑 FONCTION VALIDATION ABSENCE DIRECTE
+    const validerAbsence = async (absenceId) => {
+        try {
+            setIsValidating(true)
+            setMessage('Validation en cours...')
+
+            // 1. Récupérer absence
+            const { data: absence, error: absenceError } = await supabase
+                .from('absences_formateurs')
+                .select('*')
+                .eq('id', absenceId)
+                .single()
+
+            if (absenceError) throw absenceError
+            if (!absence) throw new Error('Absence non trouvée')
+
+            // 2. Valider = passer à 'validé'
+            const { error: updateError } = await supabase
+                .from('absences_formateurs')
+                .update({ statut: 'validé' })
+                .eq('id', absenceId)
+
+            if (updateError) throw updateError
+
+            // 3. 👑 NETTOYAGE ROI si absence (pas si dispo exceptionnelle)
+            if (absence.type !== 'formation') {
+                await nettoyerAffectations(absence.formateur_id, absence.date_debut)
+
+                // 4. 👑 COMMANDER au coordo de retirer le formateur
+                commanderSystemes('retirer_formateur', absence.formateur_id, absence.date_debut, {
+                    type: absence.type,
+                    date_fin: absence.date_fin,
+                    motif: absence.motif
+                })
+            } else {
+                // Dispo exceptionnelle -> Commander d'ajouter
+                commanderSystemes('ajouter_formateur', absence.formateur_id, absence.date_debut, {
+                    type: 'dispo_except',
+                    date_fin: absence.date_fin,
+                    motif: absence.motif
+                })
+            }
+
+            // 5. 👑 ENVOYER MESSAGE AU FORMATEUR
+            if (formateurSelectionne) {
+                await envoyerConfirmationFormateur(formateurSelectionne, absence, 'validee')
+            }
+
+            setMessage(`✅ Absence validée avec succès ! 📧 Message envoyé au formateur`)
+
+            // 6. Recharger les absences en attente
+            if (formateurSelectionne) {
+                await chargerAbsencesEnAttente(formateurSelectionne.id)
+            }
+
+        } catch (error) {
+            console.error('❌ Erreur validation:', error)
+            setMessage(`❌ Erreur: ${error.message}`)
+        } finally {
+            setIsValidating(false)
+            setTimeout(() => setMessage(''), 5000)
+        }
+    }
+
+    // 👑 FONCTION SUPPRESSION ABSENCE DIRECTE
+    const supprimerAbsence = async (absenceId) => {
+        if (!confirm('Supprimer définitivement cette absence ?')) return
+
+        try {
+            setIsValidating(true)
+            setMessage('Suppression en cours...')
+
+            // 1. Récupérer absence
+            const { data: absence, error: absenceError } = await supabase
+                .from('absences_formateurs')
+                .select('*')
+                .eq('id', absenceId)
+                .single()
+
+            if (absenceError) throw absenceError
+            if (!absence) throw new Error('Absence non trouvée')
+
+            // 2. Supprimer
+            const { error: deleteError } = await supabase
+                .from('absences_formateurs')
+                .delete()
+                .eq('id', absenceId)
+
+            if (deleteError) throw deleteError
+
+            // 3. Nettoyage affectations
+            await nettoyerAffectations(absence.formateur_id, absence.date_debut)
+
+            // 4. Commander au coordo de remettre formateur disponible
+            commanderSystemes('remettre_disponible', absence.formateur_id, absence.date_debut, {
+                type: absence.type,
+                date_fin: absence.date_fin,
+                motif: absence.motif,
+                action: 'suppression'
+            })
+
+            // 5. Envoyer message au formateur
+            if (formateurSelectionne) {
+                await envoyerConfirmationFormateur(formateurSelectionne, absence, 'supprimee')
+            }
+
+            setMessage(`✅ Absence supprimée ! 📧 Message envoyé au formateur`)
+
+            // 6. Recharger les absences en attente
+            if (formateurSelectionne) {
+                await chargerAbsencesEnAttente(formateurSelectionne.id)
+            }
+
+        } catch (error) {
+            console.error('❌ Erreur suppression:', error)
+            setMessage(`❌ Erreur: ${error.message}`)
+        } finally {
+            setIsValidating(false)
+            setTimeout(() => setMessage(''), 5000)
+        }
     }
 
     // Fonction d'ajout de logs
@@ -347,12 +632,166 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                 
             case 'absences':
                 return (
-                    <Absence
-                        formateurId={formateurSelectionne.id}
-                        formateurData={formateurSelectionne}
-                        onSuccess={handleSuccess}
-                        onError={handleError}
-                    />
+                    <>
+                        <Absence
+                            formateurId={formateurSelectionne.id}
+                            formateurData={formateurSelectionne}
+                            onSuccess={handleSuccess}
+                            onError={handleError}
+                        />
+
+                        {/* Section Absences en attente - Validation rapide */}
+                        {absencesEnAttente.length > 0 && (
+                            <div style={{
+                                marginTop: '30px',
+                                padding: '20px',
+                                backgroundColor: '#fef3c7',
+                                borderRadius: '12px',
+                                border: '2px solid #f59e0b'
+                            }}>
+                                <h3 style={{
+                                    fontSize: '18px',
+                                    fontWeight: 'bold',
+                                    color: '#92400e',
+                                    margin: '0 0 16px 0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <span>⚠️</span>
+                                    <span>{absencesEnAttente.length} absence{absencesEnAttente.length > 1 ? 's' : ''} en attente de validation</span>
+                                </h3>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {absencesEnAttente.map(absence => {
+                                        const getTypeDetails = (type) => {
+                                            switch (type) {
+                                                case 'personnel':
+                                                    return { label: 'Absence', couleur: '#ef4444' }
+                                                case 'formation':
+                                                    return { label: 'Dispo exceptionnelle', couleur: '#f59e0b' }
+                                                case 'maladie':
+                                                    return { label: 'Maladie', couleur: '#dc2626' }
+                                                case 'congés':
+                                                    return { label: 'Congés', couleur: '#059669' }
+                                                default:
+                                                    return { label: 'Autre', couleur: '#6b7280' }
+                                            }
+                                        }
+
+                                        const typeDetails = getTypeDetails(absence.type)
+                                        const estPeriode = absence.date_debut !== absence.date_fin
+
+                                        return (
+                                            <div key={absence.id} style={{
+                                                backgroundColor: 'white',
+                                                borderRadius: '8px',
+                                                padding: '16px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                gap: '16px',
+                                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                            }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        marginBottom: '8px'
+                                                    }}>
+                                                        <span style={{
+                                                            backgroundColor: typeDetails.couleur,
+                                                            color: 'white',
+                                                            padding: '4px 10px',
+                                                            borderRadius: '12px',
+                                                            fontSize: '12px',
+                                                            fontWeight: '600'
+                                                        }}>
+                                                            {typeDetails.label}
+                                                        </span>
+                                                    </div>
+
+                                                    <div style={{
+                                                        fontSize: '15px',
+                                                        fontWeight: '600',
+                                                        color: '#1f2937',
+                                                        marginBottom: '4px'
+                                                    }}>
+                                                        {new Date(absence.date_debut).toLocaleDateString('fr-FR')}
+                                                        {estPeriode && (
+                                                            <span> → {new Date(absence.date_fin).toLocaleDateString('fr-FR')}</span>
+                                                        )}
+                                                    </div>
+
+                                                    {absence.motif && (
+                                                        <div style={{
+                                                            fontSize: '13px',
+                                                            color: '#6b7280',
+                                                            fontStyle: 'italic'
+                                                        }}>
+                                                            "{absence.motif}"
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div style={{
+                                                    display: 'flex',
+                                                    gap: '8px'
+                                                }}>
+                                                    <button
+                                                        onClick={() => validerAbsence(absence.id)}
+                                                        disabled={isValidating}
+                                                        style={{
+                                                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '10px 16px',
+                                                            borderRadius: '8px',
+                                                            fontWeight: '600',
+                                                            fontSize: '13px',
+                                                            cursor: isValidating ? 'not-allowed' : 'pointer',
+                                                            opacity: isValidating ? 0.6 : 1,
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        ✅ Valider
+                                                    </button>
+                                                    <button
+                                                        onClick={() => supprimerAbsence(absence.id)}
+                                                        disabled={isValidating}
+                                                        style={{
+                                                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '10px 16px',
+                                                            borderRadius: '8px',
+                                                            fontWeight: '600',
+                                                            fontSize: '13px',
+                                                            cursor: isValidating ? 'not-allowed' : 'pointer',
+                                                            opacity: isValidating ? 0.6 : 1,
+                                                            whiteSpace: 'nowrap'
+                                                        }}
+                                                    >
+                                                        🗑️ Supprimer
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                <div style={{
+                                    marginTop: '12px',
+                                    fontSize: '12px',
+                                    color: '#78350f',
+                                    textAlign: 'center'
+                                }}>
+                                    💡 Valider une absence retire automatiquement le formateur du planning et lui envoie un message
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )
                 
             case 'planning-hebdo':
@@ -588,9 +1027,9 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                                         padding: '12px 16px',
                                         borderRadius: '8px',
                                         border: 'none',
-                                        backgroundColor: ongletActif === onglet.id ? '#3b82f6' : 
+                                        backgroundColor: ongletActif === onglet.id ? '#3b82f6' :
                                                         (!formateurSelectionne || isPurging) ? '#f3f4f6' : '#e5e7eb',
-                                        color: ongletActif === onglet.id ? 'white' : 
+                                        color: ongletActif === onglet.id ? 'white' :
                                                (!formateurSelectionne || isPurging) ? '#9ca3af' : '#374151',
                                         cursor: (!formateurSelectionne || isPurging) ? 'not-allowed' : 'pointer',
                                         fontSize: '13px',
@@ -600,9 +1039,24 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                                         opacity: (!formateurSelectionne || isPurging) ? 0.6 : 1
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span>{onglet.icon}</span>
-                                        <span>{onglet.label}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span>{onglet.icon}</span>
+                                            <span>{onglet.label}</span>
+                                        </div>
+                                        {/* Badge pour les absences en attente */}
+                                        {onglet.id === 'absences' && absencesEnAttente.length > 0 && (
+                                            <span style={{
+                                                backgroundColor: ongletActif === onglet.id ? 'rgba(255,255,255,0.3)' : '#f59e0b',
+                                                color: ongletActif === onglet.id ? 'white' : 'white',
+                                                padding: '2px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '11px',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {absencesEnAttente.length}
+                                            </span>
+                                        )}
                                     </div>
                                 </button>
                             ))}
