@@ -1,0 +1,346 @@
+\# PROJET ACLEF PLANNING V8
+
+
+
+\## CONTEXTE CRITIQUE
+
+Application de gestion de planning pour organisme de formation.
+
+IMPORTANTE : Cette app FONCTIONNE. Ne pas tout refaire.
+
+
+
+\## RÈGLES ABSOLUES
+
+1\. \*\*JAMAIS modifier le code existant sans permission explicite\*\*
+
+2\. \*\*TOUJOURS demander avant de refactorer\*\*
+
+3\. \*\*JAMAIS coder en dur des données\*\*
+
+4\. \*\*JAMAIS ajouter de fallbacks cachés\*\*
+
+5\. \*\*Si tu ne comprends pas, DEMANDE. Ne devine pas.\*\*
+
+
+
+\## TECHNOLOGIES UTILISÉES
+
+
+
+&nbsp; Framework principal :
+
+&nbsp; - Next.js 15.4.6 (avec support Turbopack pour le dev)
+
+&nbsp; - React 19.1.0 (dernière version)
+
+&nbsp; - React DOM 19.1.0
+
+
+
+&nbsp; Backend \& Base de données :
+
+&nbsp; - Supabase (@supabase/supabase-js ^2.54.0) - BaaS PostgreSQL + Auth
+
+
+
+&nbsp; Authentification \& Sécurité :
+
+&nbsp; - bcryptjs ^3.0.2 - Hashage des mots de passe
+
+&nbsp; - jsonwebtoken ^9.0.2 - Gestion des tokens JWT pour l'auth formateurs
+
+
+
+&nbsp; Styling :
+
+&nbsp; - CSS Modules (Home.module.css)
+
+&nbsp; - CSS Global (globals.css)
+
+
+
+&nbsp; Configuration :
+
+&nbsp; - ES Modules (fichiers .mjs)
+
+&nbsp; - React Strict Mode activé
+
+
+
+&nbsp; Environnement de développement :
+
+&nbsp; - Turbopack - Bundler nouvelle génération de Next.js
+
+&nbsp; - Next.js Linting intégré
+
+
+
+\## STRUCTURE DU PROJET
+
+&nbsp; projet-aclef-planning-v8/
+
+&nbsp; │
+
+&nbsp; ├── 📁 pages/                          # Pages Next.js (routage automatique)
+
+&nbsp; │   ├── index.js                       # Dashboard principal admin
+
+&nbsp; │   ├── login.js                       # Login admin
+
+&nbsp; │   ├── planning-coordo.js             # Gestion planning coordination
+
+&nbsp; │   ├── gestion-apprenants.js          # Gestion apprenants
+
+&nbsp; │   ├── gestion-formateurs.js          # Gestion formateurs
+
+&nbsp; │   ├── gestion-lieux.js               # Gestion lieux
+
+&nbsp; │   ├── gestion-absences-formateur.js  # Gestion absences formateurs
+
+&nbsp; │   ├── absence-apprenant.js           # Gestion absences apprenants
+
+&nbsp; │   ├── valider-changements.js         # Validation modifications
+
+&nbsp; │   │
+
+&nbsp; │   ├── 📁 formateur/                  # Pages espace formateur
+
+&nbsp; │   │   ├── index.js                   # Dashboard formateur
+
+&nbsp; │   │   ├── login.js                   # Login formateur
+
+&nbsp; │   │   ├── profil.js                  # Profil formateur
+
+&nbsp; │   │   ├── change-password.js         # Changement mot de passe
+
+&nbsp; │   │   ├── mon-planning-type.js       # Planning type personnel
+
+&nbsp; │   │   ├── mon-planning-hebdo.js      # Planning hebdomadaire
+
+&nbsp; │   │   ├── ma-presence.js             # Saisie présences
+
+&nbsp; │   │   ├── absence.js                 # Déclaration absences
+
+&nbsp; │   │   └── ma-messagerie.js           # Messagerie
+
+&nbsp; │   │
+
+&nbsp; │   ├── 📁 api/                        # Routes API Next.js
+
+&nbsp; │   │   ├── admin-auth.js              # Auth admin
+
+&nbsp; │   │   ├── auto-cleanup.js            # Nettoyage automatique
+
+&nbsp; │   │   │
+
+&nbsp; │   │   ├── 📁 auth/formateur/         # Auth formateurs (JWT)
+
+&nbsp; │   │   │   ├── login.js               # Login JWT
+
+&nbsp; │   │   │   ├── logout.js              # Logout
+
+&nbsp; │   │   │   ├── refresh.js             # Refresh token
+
+&nbsp; │   │   │   ├── verify.js              # Vérification token
+
+&nbsp; │   │   │   └── change-password.js     # Changement mot de passe
+
+&nbsp; │   │   │
+
+&nbsp; │   │   ├── 📁 admin/                  # Endpoints admin
+
+&nbsp; │   │   │   ├── presences-formateurs.js
+
+&nbsp; │   │   │   ├── absences-apprenants.js
+
+&nbsp; │   │   │   └── reset-formateur-password.js
+
+&nbsp; │   │   │
+
+&nbsp; │   │   └── 📁 formateur/              # Endpoints formateur
+
+&nbsp; │   │       ├── presences.js
+
+&nbsp; │   │       └── update-password.js
+
+&nbsp; │   │
+
+&nbsp; │   └── \_app.js                        # App wrapper Next.js
+
+&nbsp; │
+
+&nbsp; ├── 📁 components/                     # Composants React
+
+&nbsp; │   ├── MenuApprenants.js              # Menu sélection apprenants
+
+&nbsp; │   ├── MessagerieDashboard.js         # Interface messagerie
+
+&nbsp; │   ├── MessagerieSafeWrapper.js       # Wrapper sécurisé messagerie
+
+&nbsp; │   ├── withAuthAdmin.js               # HOC auth admin
+
+&nbsp; │   ├── withAuthFormateur.js           # HOC auth formateur
+
+&nbsp; │   │
+
+&nbsp; │   └── 📁 assistance/                 # Composants d'aide
+
+&nbsp; │       ├── Absence.jsx
+
+&nbsp; │       ├── MonPlanningHebdo.jsx
+
+&nbsp; │       ├── MonPlanningType.jsx
+
+&nbsp; │       └── PlanningFormateurType.jsx
+
+&nbsp; │
+
+&nbsp; ├── 📁 lib/                            # Librairies et utilitaires
+
+&nbsp; │   ├── supabaseClient.js              # Client Supabase standard
+
+&nbsp; │   ├── supabaseAdmin.js               # Client Supabase admin (service role)
+
+&nbsp; │   ├── AuthContext.js                 # Contexte auth admin
+
+&nbsp; │   ├── jwt.js                         # Gestion JWT
+
+&nbsp; │   ├── auditLogger.js                 # Logger d'audit
+
+&nbsp; │   └── absenceApprenantUtils.js       # Utils absences
+
+&nbsp; │
+
+&nbsp; ├── 📁 contexts/                       # Contextes React
+
+&nbsp; │   └── FormateurAuthContext.js        # Contexte auth formateur JWT
+
+&nbsp; │
+
+&nbsp; ├── 📁 styles/                         # Styles CSS
+
+&nbsp; │   ├── globals.css                    # Styles globaux
+
+&nbsp; │   └── Home.module.css                # Module CSS
+
+&nbsp; │
+
+&nbsp; ├── 📁 public/                         # Assets statiques
+
+&nbsp; │   ├── favicon.ico
+
+&nbsp; │   └── \*.svg                          # Icônes SVG
+
+&nbsp; │
+
+&nbsp; ├── 📁 Scripts utilitaires (racine)/   # Scripts .mjs de maintenance
+
+&nbsp; │   ├── check-\*.mjs                    # Scripts de vérification
+
+&nbsp; │   ├── debug-\*.mjs                    # Scripts de debugging
+
+&nbsp; │   ├── clean-\*.mjs                    # Scripts de nettoyage
+
+&nbsp; │   ├── test-\*.mjs                     # Scripts de test
+
+&nbsp; │   ├── verify-\*.mjs                   # Scripts de vérification
+
+&nbsp; │   ├── audit-\*.js                     # Scripts d'audit
+
+&nbsp; │   └── \*.sql                          # Scripts SQL (RLS, tables)
+
+&nbsp; │
+
+&nbsp; ├── middleware.js                      # Middleware Next.js
+
+&nbsp; ├── package.json                       # Dépendances npm
+
+&nbsp; ├── next.config.mjs                    # Config Next.js
+
+&nbsp; ├── .env.local                         # Variables d'environnement (non versionné)
+
+&nbsp; └── .gitignore
+
+
+
+&nbsp; Architecture :
+
+&nbsp; - Authentification double : Admin (hardcodé) + Formateur (JWT)
+
+&nbsp; - API Routes : Next.js API routes pour backend
+
+&nbsp; - Base de données : Supabase PostgreSQL
+
+&nbsp; - Sécurité : RLS, bcrypt, JWT
+
+&nbsp; - Scripts : +30 scripts utilitaires pour maintenance BDD
+
+
+
+\## ERREURS À NE PLUS JAMAIS RÉPÉTER
+
+\- Casser la base de données
+
+\- Refaire le design sans sauvegarder
+
+\- Ajouter des fonctionnalités non demandées
+
+\- Modifier plusieurs fichiers à la fois
+
+
+
+\## MA MÉTHODE DE TRAVAIL
+
+1\. Je décris CE QUE je veux (pas comment)
+
+2\. Tu me proposes UN SEUL fichier à modifier
+
+3\. Tu me montres EXACTEMENT ce que tu vas changer
+
+4\. J'approuve ou je refuse
+
+5\. Tu modifies UN SEUL fichier
+
+6\. On teste
+
+7\. On passe au suivant
+
+
+
+
+
+\## REGLES À SUIVRE
+
+
+
+1\. Réfléchis d'abord au problème, lis le code source pour trouver les fichiers pertinents et rédige un plan dans tasks/todo.md.
+
+2\. Ce plan doit contenir une liste de tâches à effectuer que tu peux cocher au fur et à mesure de leur exécution.
+
+3\. Avant de commencer, demande-moi pour que je vérifie le plan.
+
+4\. Commence ensuite à travailler sur les tâches à effectuer, en les marquant comme terminées au fur et à mesure.
+
+5\. À chaque étape veille à me fournir une explication détaillée des modifications que tu as apportées.
+
+6\. Simplifie au maximum chaque tâche et modification de code. Nous souhaitons éviter les modifications massives ou complexes. Chaque modification doit avoir un impact minimal sur le code. Tout est une question de simplicité.
+
+7\. Enfin, ajoute une section de révision au fichier todo.md avec un résumé des modifications apportées et toute autre information pertinente.
+
+8\. NE SOIS PAS PARESSEUX. NE SOIS JAMAIS PARESSEUX. EN CAS DE BUG, ​​TROUVE-EN LA CAUSE ET CORRIGE-LA. Pas de correctifs temporaires. Tu es un développeur senior. Ne sois jamais paresseux.
+
+9\. Simplifie au maximum les correctifs et les modifications de code. Ils ne doivent affecter que le code nécessaire à la tâche et rien d'autre. Ils doivent avoir le moins d'impact possible sur le code. Ton objectif est de ne pas introduire de bugs. La simplicité est primordiale.
+
+
+
+
+
+\## QUAND JE DIS "STOP"
+
+Tu arrêtes immédiatement. Tu ne finis pas ta phrase.
+
+Tu ne "corriges" pas une dernière chose.
+
+ESSENTIEL : Lors du débogage, il est impératif de suivre l'intégralité du flux de code, étape par étape. Sans hypothèses ni raccourcis.
+
