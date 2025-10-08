@@ -48,13 +48,16 @@ export default function MenuApprenants({
 
   const validateStatutActuel = (apprenant, dateTest, suspensions) => {
     if (apprenant.statut_formation !== 'en_cours') return false;
-    
-    const suspensionActive = suspensions.find(s => 
-      s.apprenant_id === apprenant.id &&
-      new Date(s.date_suspension) <= new Date(dateTest) &&
-      new Date(s.date_reprise_prevue) >= new Date(dateTest)
-    );
-    
+
+    const suspensionActive = suspensions.find(s => {
+      // Utiliser date_reprise_reelle si elle existe, sinon date_reprise_prevue
+      const dateReprise = s.date_reprise_reelle || s.date_reprise_prevue;
+
+      return s.apprenant_id === apprenant.id &&
+             new Date(s.date_suspension) <= new Date(dateTest) &&
+             dateReprise && new Date(dateReprise) >= new Date(dateTest);
+    });
+
     return !suspensionActive;
   };
 

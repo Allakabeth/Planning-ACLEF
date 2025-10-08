@@ -11,6 +11,7 @@ function GestionApprenants({ user, logout, inactivityTime }) {
     const [filtreStatut, setFiltreStatut] = useState('actif')
     const [filtreDispositif, setFiltreDispositif] = useState('tous')
     const [filtreLieu, setFiltreLieu] = useState('tous')
+    const [filtreRecherche, setFiltreRecherche] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [message, setMessage] = useState('')
     
@@ -51,7 +52,7 @@ function GestionApprenants({ user, logout, inactivityTime }) {
     useEffect(() => {
         fetchApprenants()
         fetchLieux()
-    }, [filtreStatut, filtreDispositif, filtreLieu])
+    }, [filtreStatut, filtreDispositif, filtreLieu, filtreRecherche])
     
     // Fonction pour récupérer les lieux
     const fetchLieux = async () => {
@@ -111,6 +112,16 @@ function GestionApprenants({ user, logout, inactivityTime }) {
             // Filtre par lieu
             if (filtreLieu !== 'tous') {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.lieu_formation_id === filtreLieu)
+            }
+
+            // Filtre par recherche nom/prénom
+            if (filtreRecherche.trim()) {
+                const recherche = filtreRecherche.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                apprenantsFiltres = apprenantsFiltres.filter(a => {
+                    const prenom = (a.prenom || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    const nom = (a.nom || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    return prenom.includes(recherche) || nom.includes(recherche)
+                })
             }
 
             setApprenants(apprenantsFiltres)
@@ -1124,6 +1135,24 @@ function GestionApprenants({ user, logout, inactivityTime }) {
                     borderBottom: '1px solid #e5e7eb'
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
+                        {/* Champ de recherche */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 250px' }}>
+                            <label style={{ fontWeight: '500', color: '#374151' }}>🔍</label>
+                            <input
+                                type="text"
+                                placeholder="Rechercher par nom ou prénom..."
+                                value={filtreRecherche}
+                                onChange={(e) => setFiltreRecherche(e.target.value)}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 12px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '8px',
+                                    fontSize: '14px'
+                                }}
+                            />
+                        </div>
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                             <label style={{ fontWeight: '500', color: '#374151' }}>Statut :</label>
                             <select
