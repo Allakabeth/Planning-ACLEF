@@ -118,10 +118,9 @@ export default function MenuApprenants({
       try {
         const { data: suspensionsData, error: suspensionsError } = await supabase
           .from('suspensions_parcours')
-          .select('apprenant_id, date_suspension, date_reprise_prevue')
-          .lte('date_suspension', dateTest)
-          .gte('date_reprise_prevue', dateTest);
-        
+          .select('apprenant_id, date_suspension, date_reprise_prevue, date_reprise_reelle')
+          .lte('date_suspension', dateTest);
+
         if (!suspensionsError) {
           suspensions = suspensionsData || [];
         }
