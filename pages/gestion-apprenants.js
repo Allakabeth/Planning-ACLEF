@@ -49,6 +49,10 @@ function GestionApprenants({ user, logout, inactivityTime }) {
     const [showConfirmation, setShowConfirmation] = useState(false)
     const [actionEnCours, setActionEnCours] = useState(null)
 
+    // États pour confirmation doublon
+    const [showConfirmationDoublon, setShowConfirmationDoublon] = useState(false)
+    const [doublonDetecte, setDoublonDetecte] = useState(null)
+
     useEffect(() => {
         fetchApprenants()
         fetchLieux()
@@ -175,54 +179,83 @@ function GestionApprenants({ user, logout, inactivityTime }) {
     const genererIdentifiantUnique = async (prenomBase) => {
         try {
             const prenomNormalized = normalizeText(prenomBase)
-            
+
             // Chercher tous les identifiants similaires
             const { data: existants, error } = await supabase
                 .from('users')
                 .select('identifiant')
                 .ilike('identifiant', `${prenomNormalized}%`)
                 .eq('role', 'apprenant')
-            
+
             if (error) throw error
-            
+
             // Si aucun doublon, utiliser le prénom simple
             if (!existants || existants.length === 0) {
-                return { 
-                    identifiant: prenomBase, 
-                    message: null 
+                return {
+                    identifiant: prenomBase,
+                    message: null
                 }
             }
-            
+
             // Trouver le prochain numéro disponible
             const identifiants = existants.map(e => e.identifiant?.toLowerCase())
-            
+
             if (!identifiants.includes(prenomNormalized)) {
-                return { 
-                    identifiant: prenomBase, 
-                    message: null 
+                return {
+                    identifiant: prenomBase,
+                    message: null
                 }
             }
-            
+
             // Générer avec numéro
             let numero = 2
-            while (identifiants.includes(`${prenomNormalized}${numero.toString().padStart(2, '0')}`) || 
+            while (identifiants.includes(`${prenomNormalized}${numero.toString().padStart(2, '0')}`) ||
                    identifiants.includes(`${prenomNormalized}${numero}`)) {
                 numero++
             }
-            
+
             const nouvelIdentifiant = `${prenomBase}${numero.toString().padStart(2, '0')}`
-            
+
             return {
                 identifiant: nouvelIdentifiant,
                 message: `⚠️ L'identifiant '${prenomBase}' est déjà utilisé. L'identifiant attribué est : ${nouvelIdentifiant}`
             }
-            
+
         } catch (error) {
             console.error('Erreur génération identifiant:', error)
-            return { 
-                identifiant: prenomBase, 
-                message: null 
+            return {
+                identifiant: prenomBase,
+                message: null
             }
+        }
+    }
+
+    // Fonction pour vérifier si un apprenant existe déjà avec le même prénom/nom
+    const verifierDoublonApprenant = async (prenom, nom) => {
+        try {
+            const prenomNormalized = normalizeText(prenom.trim())
+            const nomNormalized = normalizeText(nom.trim())
+
+            // Récupérer tous les apprenants (actifs ET archivés)
+            const { data: existants, error } = await supabase
+                .from('users')
+                .select('id, prenom, nom, archive')
+                .eq('role', 'apprenant')
+
+            if (error) throw error
+
+            // Vérifier si un apprenant avec le même prénom/nom normalisé existe
+            const doublon = existants?.find(a => {
+                const prenomExistant = normalizeText(a.prenom || '')
+                const nomExistant = normalizeText(a.nom || '')
+                return prenomExistant === prenomNormalized && nomExistant === nomNormalized
+            })
+
+            return doublon // Retourne l'apprenant existant ou undefined
+
+        } catch (error) {
+            console.error('Erreur vérification doublon:', error)
+            return null // En cas d'erreur, on laisse passer (sécurité failopen)
         }
     }
 
@@ -293,9 +326,9 @@ function GestionApprenants({ user, logout, inactivityTime }) {
     }
 
     // Fonction pour ajouter un apprenant
-    const handleSubmitAjout = async (e) => {
+    const handleSubmitAjout = async (e, forceCreation = false) => {
         e.preventDefault()
-        
+
         if (!prenom.trim() || !nom.trim()) {
             setMessage('Le prénom et le nom sont obligatoires')
             setTimeout(() => setMessage(''), 4000)
@@ -311,9 +344,20 @@ function GestionApprenants({ user, logout, inactivityTime }) {
 
         setIsLoading(true)
         try {
+            // Vérification doublon (sauf si forceCreation = true)
+            if (!forceCreation) {
+                const doublon = await verifierDoublonApprenant(prenom, nom)
+                if (doublon) {
+                    setDoublonDetecte(doublon)
+                    setShowConfirmationDoublon(true)
+                    setIsLoading(false)
+                    return
+                }
+            }
+
             // Générer l'identifiant unique
             const { identifiant, message: messageIdentifiant } = await genererIdentifiantUnique(prenom.trim())
-            
+
             const nouvelApprenant = {
                 prenom: prenom.trim(),
                 nom: nom.trim(),
@@ -329,32 +373,26 @@ function GestionApprenants({ user, logout, inactivityTime }) {
             if (lieuFormationId) nouvelApprenant.lieu_formation_id = lieuFormationId
             if (statutFormation) nouvelApprenant.statut_formation = statutFormation
 
-            const { error } = await supabase.from('users').insert([nouvelApprenant])
-            
+            const { data: apprenantCree, error } = await supabase
+                .from('users')
+                .insert([nouvelApprenant])
+                .select()
+
             if (error) throw error
-            
-            // Afficher les informations de connexion
-            setIdentifiantGenere(identifiant)
-            setShowCredentialsInfo(true)
-            
-            let messageSucces = `✅ Apprenant ajouté avec succès !\n\n📋 Informations de connexion :\n• Identifiant : ${identifiant}\n• Mot de passe initial : ${nom.trim()}\n\n⚠️ L'apprenant devra changer son mot de passe lors de la première connexion.`
-            
-            if (messageIdentifiant) {
-                messageSucces = messageIdentifiant + '\n\n' + messageSucces
-            }
-            
-            setMessage(messageSucces)
-            setTimeout(() => setMessage(''), 10000)
-            
+
             // Réinitialiser le formulaire
             resetFormulaire()
             setShowAjouterForm(false)
-            await fetchApprenants()
-            
+            setIsLoading(false) // Débloquer AVANT la redirection
+
+            // Rediriger vers la page planning-type-apprenants avec l'apprenant présélectionné
+            if (apprenantCree && apprenantCree.length > 0) {
+                router.push(`/planning-type-apprenants?apprenant=${apprenantCree[0].id}`)
+            }
+
         } catch (error) {
             setMessage(`Erreur : ${error.message}`)
             setTimeout(() => setMessage(''), 4000)
-        } finally {
             setIsLoading(false)
         }
     }
@@ -1679,6 +1717,114 @@ function GestionApprenants({ user, logout, inactivityTime }) {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Confirmation Doublon */}
+            {showConfirmationDoublon && doublonDetecte && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        padding: '30px',
+                        width: '500px',
+                        boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+                        border: '3px solid #f59e0b'
+                    }}>
+                        <h3 style={{ marginBottom: '20px', color: '#92400e', fontSize: '20px' }}>
+                            ⚠️ Doublon détecté !
+                        </h3>
+
+                        <div style={{
+                            backgroundColor: '#fef3c7',
+                            padding: '15px',
+                            borderRadius: '8px',
+                            marginBottom: '20px',
+                            border: '1px solid #fbbf24'
+                        }}>
+                            <p style={{ color: '#92400e', marginBottom: '10px', fontSize: '15px' }}>
+                                Un apprenant avec le même nom existe déjà :
+                            </p>
+                            <p style={{
+                                color: '#78350f',
+                                fontWeight: 'bold',
+                                fontSize: '16px',
+                                marginBottom: '8px'
+                            }}>
+                                📋 {doublonDetecte.prenom} {doublonDetecte.nom}
+                            </p>
+                            <p style={{
+                                color: '#92400e',
+                                fontSize: '14px',
+                                fontStyle: 'italic'
+                            }}>
+                                {doublonDetecte.archive ? '📦 Cet apprenant est archivé' : '✅ Cet apprenant est actif'}
+                            </p>
+                        </div>
+
+                        <p style={{
+                            marginBottom: '25px',
+                            color: '#6b7280',
+                            fontSize: '14px',
+                            lineHeight: '1.6'
+                        }}>
+                            Êtes-vous sûr de vouloir créer un doublon ?<br/>
+                            <strong>Cette action créera un second apprenant avec le même nom.</strong>
+                        </p>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowConfirmationDoublon(false)
+                                    setDoublonDetecte(null)
+                                }}
+                                style={{
+                                    padding: '10px 20px',
+                                    backgroundColor: '#6b7280',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                ❌ Annuler
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async (e) => {
+                                    setShowConfirmationDoublon(false)
+                                    setDoublonDetecte(null)
+                                    await handleSubmitAjout(e, true) // Force la création
+                                }}
+                                style={{
+                                    padding: '10px 20px',
+                                    backgroundColor: '#f59e0b',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                ✅ Créer quand même
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

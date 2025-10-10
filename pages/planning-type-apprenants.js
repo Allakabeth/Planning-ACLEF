@@ -24,6 +24,17 @@ function PlanningTypeApprenants({ user, logout, inactivityTime }) {
         fetchLieux()
     }, [])
 
+    // Gestion de la présélection via query parameter
+    useEffect(() => {
+        if (apprenants.length > 0 && router.query.apprenant) {
+            const apprenantId = router.query.apprenant
+            const apprenant = apprenants.find(a => a.id === apprenantId)
+            if (apprenant && !apprenantSelectionne) {
+                handleApprenantChange(apprenantId)
+            }
+        }
+    }, [apprenants, router.query.apprenant])
+
     // Fonction pour récupérer les apprenants
     const fetchApprenants = async () => {
         try {
