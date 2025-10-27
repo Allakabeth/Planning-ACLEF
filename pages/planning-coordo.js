@@ -433,6 +433,7 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
     const [partieActive, setPartieActive] = useState(1); // 1 ou 2
     const [associationsPartie1, setAssociationsPartie1] = useState([]);
     const [associationsPartie2, setAssociationsPartie2] = useState([]);
+    const [messageOrganisation, setMessageOrganisation] = useState(''); // Message de feedback
 
     // ☆☆☆ NOUVEAUX ÉTATS POUR CONTRÔLE ROI ABSOLU - ÉTAPE 3.1 ☆☆☆
     const [derniereCommande, setDerniereCommande] = useState(null);
@@ -1081,6 +1082,39 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
         };
     }, []);
 
+    // ═══════════════════════════════════════════════════════════════
+    // CHARGEMENT DES ASSOCIATIONS AU DÉMARRAGE DE LA MODAL
+    // ═══════════════════════════════════════════════════════════════
+    useEffect(() => {
+        if (showModalOrganisation && seanceSelectionnee && formateurs.length > 0 && salaries.length > 0 && apprenants.length > 0) {
+            const loadAssociations = async () => {
+                const assocs = await chargerAssociations(
+                    seanceSelectionnee.date,
+                    seanceSelectionnee.creneau,
+                    seanceSelectionnee.lieu_id
+                );
+
+                // Charger selon si séance divisée ou non
+                if (assocs.partie1.length > 0 || assocs.partie2.length > 0) {
+                    // Séance divisée
+                    setSeanceDivisee(true);
+                    setAssociationsPartie1(assocs.partie1);
+                    setAssociationsPartie2(assocs.partie2);
+                    setAssociations([]);
+                } else {
+                    // Séance normale
+                    setSeanceDivisee(false);
+                    setAssociations(assocs.normales);
+                    setAssociationsPartie1([]);
+                    setAssociationsPartie2([]);
+                }
+            };
+
+            loadAssociations();
+        }
+    }, [showModalOrganisation, seanceSelectionnee, formateurs, salaries, apprenants]);
+    // ═══════════════════════════════════════════════════════════════
+
     // FONCTIONS DE SAUVEGARDE
     const handleEnregistrerBrouillon = async () => {
         setIsLoading(true);
@@ -1505,6 +1539,222 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         const currentWeekStart = getCurrentWeekStart();
         setCurrentDate(currentWeekStart);
     };
+
+    // ═══════════════════════════════════════════════════════════════
+    // GESTION ORGANISATION PÉDAGOGIQUE - BASE DE DONNÉES
+    // ═══════════════════════════════════════════════════════════════
+
+    // Récupérer ou créer une séance pédagogique
+    const getOrCreateSeance = async (date, creneau, lieu_id, partie = null) => {
+        try {
+            // Chercher séance existante
+            let query = supabase
+                .from('seances_pedagogiques')
+                .select('id')
+                .eq('date', date)
+                .eq('creneau', creneau)
+                .eq('lieu_id', lieu_id);
+
+            // Gestion correcte de NULL : utiliser .is() au lieu de .eq()
+            if (partie === null) {
+                query = query.is('partie', null);
+            } else {
+                query = query.eq('partie', partie);
+            }
+
+            const { data: seancesExistantes, error: searchError } = await query;
+
+            if (searchError) {
+                setMessageOrganisation(`❌ Erreur recherche séance: ${searchError.message}`);
+                setTimeout(() => setMessageOrganisation(''), 5000);
+                throw searchError;
+            }
+
+            // Si au moins une séance existe, utiliser la première
+            if (seancesExistantes && seancesExistantes.length > 0) {
+                return seancesExistantes[0].id;
+            }
+
+            // Créer nouvelle séance
+            const { data: nouvelleSeance, error: insertError } = await supabase
+                .from('seances_pedagogiques')
+                .insert({
+                    date,
+                    creneau,
+                    lieu_id,
+                    partie
+                })
+                .select('id')
+                .single();
+
+            if (insertError) {
+                setMessageOrganisation(`❌ Erreur création séance: ${insertError.message}`);
+                setTimeout(() => setMessageOrganisation(''), 5000);
+                throw insertError;
+            }
+            return nouvelleSeance.id;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    // Charger les associations d'une séance
+    const chargerAssociations = async (date, creneau, lieu_id) => {
+        try {
+            // Charger associations non divisées (partie NULL)
+            const { data: assocNormales } = await supabase
+                .from('seances_pedagogiques')
+                .select(`
+                    id,
+                    associations_pedagogiques (
+                        id,
+                        encadrant_id,
+                        apprenant_id,
+                        notes_pedagogiques
+                    )
+                `)
+                .eq('date', date)
+                .eq('creneau', creneau)
+                .eq('lieu_id', lieu_id)
+                .is('partie', null);
+
+            // Charger associations partie 1
+            const { data: assocPartie1 } = await supabase
+                .from('seances_pedagogiques')
+                .select(`
+                    id,
+                    associations_pedagogiques (
+                        id,
+                        encadrant_id,
+                        apprenant_id,
+                        notes_pedagogiques
+                    )
+                `)
+                .eq('date', date)
+                .eq('creneau', creneau)
+                .eq('lieu_id', lieu_id)
+                .eq('partie', 1);
+
+            // Charger associations partie 2
+            const { data: assocPartie2 } = await supabase
+                .from('seances_pedagogiques')
+                .select(`
+                    id,
+                    associations_pedagogiques (
+                        id,
+                        encadrant_id,
+                        apprenant_id,
+                        notes_pedagogiques
+                    )
+                `)
+                .eq('date', date)
+                .eq('creneau', creneau)
+                .eq('lieu_id', lieu_id)
+                .eq('partie', 2);
+
+            const transformerAssociations = (assocs) => {
+                if (!assocs || assocs.length === 0) return [];
+
+                // IMPORTANT : Récupérer les associations de TOUTES les séances
+                const toutesAssociations = [];
+                for (const seance of assocs) {
+                    if (seance.associations_pedagogiques && seance.associations_pedagogiques.length > 0) {
+                        toutesAssociations.push(...seance.associations_pedagogiques);
+                    }
+                }
+
+                return toutesAssociations.map(a => {
+                    const encadrant = formateurs.find(f => f.id === a.encadrant_id)
+                                   || salaries.find(s => s.id === a.encadrant_id);
+                    const apprenant = apprenants.find(ap => ap.id === a.apprenant_id);
+
+                    return {
+                        id: a.id,
+                        encadrant: encadrant,
+                        apprenant: apprenant,
+                        notes: a.notes_pedagogiques || ''
+                    };
+                }).filter(a => a.encadrant && a.apprenant);
+            };
+
+            return {
+                normales: transformerAssociations(assocNormales),
+                partie1: transformerAssociations(assocPartie1),
+                partie2: transformerAssociations(assocPartie2)
+            };
+        } catch (error) {
+            return { normales: [], partie1: [], partie2: [] };
+        }
+    };
+
+    // Sauvegarder une association
+    const sauvegarderAssociation = async (association, date, creneau, lieu_id, partie = null) => {
+        try {
+            const seanceId = await getOrCreateSeance(date, creneau, lieu_id, partie);
+
+            // Si seanceId est null, le message d'erreur a déjà été affiché par getOrCreateSeance
+            if (!seanceId) {
+                return null;
+            }
+
+            const { data, error } = await supabase
+                .from('associations_pedagogiques')
+                .insert({
+                    seance_id: seanceId,
+                    encadrant_id: association.encadrant.id,
+                    apprenant_id: association.apprenant.id,
+                    notes_pedagogiques: association.notes || ''
+                })
+                .select('id')
+                .single();
+
+            if (error) throw error;
+
+            // Message de succès
+            setMessageOrganisation(`✅ ${association.encadrant.prenom} → ${association.apprenant.prenom} sauvegardé`);
+            setTimeout(() => setMessageOrganisation(''), 2000);
+
+            return data.id;
+        } catch (error) {
+            setMessageOrganisation(`❌ Erreur : ${error.message}`);
+            setTimeout(() => setMessageOrganisation(''), 3000);
+            return null;
+        }
+    };
+
+    // Modifier les notes d'une association
+    const modifierNotesAssociation = async (associationId, notes) => {
+        try {
+            const { error } = await supabase
+                .from('associations_pedagogiques')
+                .update({ notes_pedagogiques: notes })
+                .eq('id', associationId);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Erreur modifierNotesAssociation:', error);
+            return false;
+        }
+    };
+
+    // Supprimer une association
+    const supprimerAssociation = async (associationId) => {
+        try {
+            const { error } = await supabase
+                .from('associations_pedagogiques')
+                .delete()
+                .eq('id', associationId);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Erreur supprimerAssociation:', error);
+            return false;
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
 
     // GESTION DES DONNÉES
     const handleLieuChange = (dayIndex, lieuIndex, creneau, value) => {
@@ -2631,6 +2881,21 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             </button>
                         </div>
 
+                        {/* Message de feedback */}
+                        {messageOrganisation && (
+                            <div style={{
+                                padding: '12px',
+                                marginBottom: '16px',
+                                backgroundColor: messageOrganisation.startsWith('✅') ? '#dcfce7' : '#fee2e2',
+                                color: messageOrganisation.startsWith('✅') ? '#166534' : '#991b1b',
+                                borderRadius: '8px',
+                                fontWeight: '500',
+                                textAlign: 'center'
+                            }}>
+                                {messageOrganisation}
+                            </div>
+                        )}
+
                         {/* Contenu de la modal */}
                         <div style={{ minWidth: '900px' }}>
                             {/* Infos séance */}
@@ -2760,7 +3025,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         return (
                                             <div
                                                 key={formateur.id}
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     if (apprenantSelectionne) {
                                                         // Créer association
                                                         const nouvelleAssoc = {
@@ -2770,15 +3035,34 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             notes: ''
                                                         };
 
-                                                        if (seanceDivisee) {
-                                                            if (partieActive === 1) {
-                                                                setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                        // Déterminer la partie (1, 2, ou null)
+                                                        const partie = seanceDivisee ? partieActive : null;
+
+                                                        // Sauvegarder en base de données
+                                                        const dbId = await sauvegarderAssociation(
+                                                            nouvelleAssoc,
+                                                            seanceSelectionnee.date,
+                                                            seanceSelectionnee.creneau,
+                                                            seanceSelectionnee.lieu_id,
+                                                            partie
+                                                        );
+
+                                                        if (dbId) {
+                                                            // Remplacer l'ID temporaire par l'ID de la base
+                                                            nouvelleAssoc.id = dbId;
+
+                                                            // Ajouter à l'état local
+                                                            if (seanceDivisee) {
+                                                                if (partieActive === 1) {
+                                                                    setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                                } else {
+                                                                    setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                                }
                                                             } else {
-                                                                setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                                setAssociations([...associations, nouvelleAssoc]);
                                                             }
-                                                        } else {
-                                                            setAssociations([...associations, nouvelleAssoc]);
                                                         }
+
                                                         setApprenantSelectionne(null);
                                                     }
                                                 }}
@@ -2813,7 +3097,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                     {/* Salarié */}
                                                     {salarie && (
                                                         <div
-                                                            onClick={() => {
+                                                            onClick={async () => {
                                                                 if (apprenantSelectionne) {
                                                                     // Créer association
                                                                     const nouvelleAssoc = {
@@ -2823,15 +3107,34 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                         notes: ''
                                                                     };
 
-                                                                    if (seanceDivisee) {
-                                                                        if (partieActive === 1) {
-                                                                            setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                                    // Déterminer la partie (1, 2, ou null)
+                                                                    const partie = seanceDivisee ? partieActive : null;
+
+                                                                    // Sauvegarder en base de données
+                                                                    const dbId = await sauvegarderAssociation(
+                                                                        nouvelleAssoc,
+                                                                        seanceSelectionnee.date,
+                                                                        seanceSelectionnee.creneau,
+                                                                        seanceSelectionnee.lieu_id,
+                                                                        partie
+                                                                    );
+
+                                                                    if (dbId) {
+                                                                        // Remplacer l'ID temporaire par l'ID de la base
+                                                                        nouvelleAssoc.id = dbId;
+
+                                                                        // Ajouter à l'état local
+                                                                        if (seanceDivisee) {
+                                                                            if (partieActive === 1) {
+                                                                                setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                                            } else {
+                                                                                setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                                            }
                                                                         } else {
-                                                                            setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                                            setAssociations([...associations, nouvelleAssoc]);
                                                                         }
-                                                                    } else {
-                                                                        setAssociations([...associations, nouvelleAssoc]);
                                                                     }
+
                                                                     setApprenantSelectionne(null);
                                                                 }
                                                             }}
@@ -3077,23 +3380,29 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             {assoc.apprenant.prenom} {assoc.apprenant.nom}
                                                         </span>
                                                         <button
-                                                            onClick={() => {
+                                                            onClick={async () => {
                                                                 const notes = prompt('Notes pédagogiques pour ' + assoc.apprenant.prenom + ' :', assoc.notes);
                                                                 if (notes !== null) {
-                                                                    if (seanceDivisee) {
-                                                                        const newAssocs = partieActive === 1
-                                                                            ? [...associationsPartie1]
-                                                                            : [...associationsPartie2];
-                                                                        newAssocs[index].notes = notes;
-                                                                        if (partieActive === 1) {
-                                                                            setAssociationsPartie1(newAssocs);
+                                                                    // Sauvegarder en base de données
+                                                                    const success = await modifierNotesAssociation(assoc.id, notes);
+
+                                                                    if (success) {
+                                                                        // Mettre à jour l'état local
+                                                                        if (seanceDivisee) {
+                                                                            const newAssocs = partieActive === 1
+                                                                                ? [...associationsPartie1]
+                                                                                : [...associationsPartie2];
+                                                                            newAssocs[index].notes = notes;
+                                                                            if (partieActive === 1) {
+                                                                                setAssociationsPartie1(newAssocs);
+                                                                            } else {
+                                                                                setAssociationsPartie2(newAssocs);
+                                                                            }
                                                                         } else {
-                                                                            setAssociationsPartie2(newAssocs);
+                                                                            const newAssocs = [...associations];
+                                                                            newAssocs[index].notes = notes;
+                                                                            setAssociations(newAssocs);
                                                                         }
-                                                                    } else {
-                                                                        const newAssocs = [...associations];
-                                                                        newAssocs[index].notes = notes;
-                                                                        setAssociations(newAssocs);
                                                                     }
                                                                 }
                                                             }}
@@ -3115,15 +3424,21 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         )}
                                                     </div>
                                                     <button
-                                                        onClick={() => {
-                                                            if (seanceDivisee) {
-                                                                if (partieActive === 1) {
-                                                                    setAssociationsPartie1(associationsPartie1.filter(a => a.id !== assoc.id));
+                                                        onClick={async () => {
+                                                            // Supprimer de la base de données
+                                                            const success = await supprimerAssociation(assoc.id);
+
+                                                            if (success) {
+                                                                // Supprimer de l'état local
+                                                                if (seanceDivisee) {
+                                                                    if (partieActive === 1) {
+                                                                        setAssociationsPartie1(associationsPartie1.filter(a => a.id !== assoc.id));
+                                                                    } else {
+                                                                        setAssociationsPartie2(associationsPartie2.filter(a => a.id !== assoc.id));
+                                                                    }
                                                                 } else {
-                                                                    setAssociationsPartie2(associationsPartie2.filter(a => a.id !== assoc.id));
+                                                                    setAssociations(associations.filter(a => a.id !== assoc.id));
                                                                 }
-                                                            } else {
-                                                                setAssociations(associations.filter(a => a.id !== assoc.id));
                                                             }
                                                         }}
                                                         style={{
