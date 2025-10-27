@@ -2036,22 +2036,21 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             Impression planning
                         </button>
 
-                        <button
-                            className="no-print"
-                            onClick={() => setShowModalOrganisation(true)}
-                            style={{
-                                padding: '6px 12px',
-                                backgroundColor: '#3b82f6',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '13px',
-                                cursor: 'pointer',
-                                fontWeight: '500'
-                            }}
-                        >
-                            Organisation pédagogique
-                        </button>
+                        <div className="no-print" style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            borderRadius: '6px',
+                            backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+                            color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+                            border: '1px solid',
+                            borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
+                        }}>
+                            Status : {inactivityTime >= 300 ? '😴 ENDORMI!' :
+                                     inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                                     inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                                     `🟢 ACTIF`}
+                        </div>
                     </div>
 
                     <div className="no-print" style={{ display: 'none' }}>
