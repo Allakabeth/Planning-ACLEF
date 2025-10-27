@@ -423,6 +423,16 @@ function PlanningCoordo({ user, logout, inactivityTime }) {
     const [dataLoaded, setDataLoaded] = useState(false);
     const [message, setMessage] = useState('');
     const [filtreDisponibilite, setFiltreDisponibilite] = useState('toutes');
+    const [showModalOrganisation, setShowModalOrganisation] = useState(false);
+    const [seanceSelectionnee, setSeanceSelectionnee] = useState(null);
+
+    // États pour la modal Organisation Pédagogique
+    const [apprenantSelectionne, setApprenantSelectionne] = useState(null);
+    const [associations, setAssociations] = useState([]);
+    const [seanceDivisee, setSeanceDivisee] = useState(false);
+    const [partieActive, setPartieActive] = useState(1); // 1 ou 2
+    const [associationsPartie1, setAssociationsPartie1] = useState([]);
+    const [associationsPartie2, setAssociationsPartie2] = useState([]);
 
     // ☆☆☆ NOUVEAUX ÉTATS POUR CONTRÔLE ROI ABSOLU - ÉTAPE 3.1 ☆☆☆
     const [derniereCommande, setDerniereCommande] = useState(null);
@@ -2025,6 +2035,23 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         >
                             Impression planning
                         </button>
+
+                        <button
+                            className="no-print"
+                            onClick={() => setShowModalOrganisation(true)}
+                            style={{
+                                padding: '6px 12px',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                fontWeight: '500'
+                            }}
+                        >
+                            Organisation pédagogique
+                        </button>
                     </div>
 
                     <div className="no-print" style={{ display: 'none' }}>
@@ -2486,7 +2513,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         </div>
 
                                                         {/* RÉACTIVATION PROGRESSIVE - Étape 1: Activation de base */}
-                                                        <MenuApprenants 
+                                                        <MenuApprenants
                                                             cellKey={cellKey}
                                                             creneauData={{
                                                                 date: getWeekDates(currentDate)[dayIndex],
@@ -2502,6 +2529,37 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             disabled={!selectedLieuId}
                                                             couleurEnregistree={couleursEnregistrees[cellKey]}
                                                         />
+
+                                                        {/* Bouton Organisation Pédagogique */}
+                                                        <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSeanceSelectionnee({
+                                                                        date: getWeekDates(currentDate)[dayIndex],
+                                                                        jour: jours[dayIndex],
+                                                                        creneau: creneau === 'Matin' ? 'M' : 'AM',
+                                                                        lieu_id: selectedLieuId,
+                                                                        lieu_nom: lieux.find(l => l.id === selectedLieuId)?.nom || '',
+                                                                        dayIndex: dayIndex,
+                                                                        lieuIndex: lieuIndex,
+                                                                        cellKey: cellKey
+                                                                    });
+                                                                    setShowModalOrganisation(true);
+                                                                }}
+                                                                disabled={!selectedLieuId}
+                                                                style={{
+                                                                    fontSize: '18px',
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    cursor: selectedLieuId ? 'pointer' : 'not-allowed',
+                                                                    opacity: selectedLieuId ? 1 : 0.3,
+                                                                    padding: '4px'
+                                                                }}
+                                                                title="Organiser la séance pédagogique"
+                                                            >
+                                                                📋
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </td>
                                             );
@@ -2515,6 +2573,584 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     })()}
                 </div>
             </div>
+
+            {/* Modal Organisation Pédagogique */}
+            {showModalOrganisation && (
+                <div
+                    onClick={() => setShowModalOrganisation(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: 'white',
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '90%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
+                        }}
+                    >
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                            borderBottom: '2px solid #e5e7eb',
+                            paddingBottom: '12px'
+                        }}>
+                            <h2 style={{ margin: 0, color: '#1f2937', fontSize: '20px', fontWeight: '600' }}>
+                                Organisation Pédagogique
+                            </h2>
+                            <button
+                                onClick={() => setShowModalOrganisation(false)}
+                                style={{
+                                    padding: '6px 12px',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Fermer
+                            </button>
+                        </div>
+
+                        {/* Contenu de la modal */}
+                        <div style={{ minWidth: '900px' }}>
+                            {/* Infos séance */}
+                            {seanceSelectionnee && (
+                                <div style={{
+                                    backgroundColor: '#f3f4f6',
+                                    padding: '16px',
+                                    borderRadius: '8px',
+                                    marginBottom: '20px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}>
+                                    <div>
+                                        <strong>Séance :</strong> {seanceSelectionnee.jour} {new Date(seanceSelectionnee.date).toLocaleDateString('fr-FR')}
+                                        {' - '}{seanceSelectionnee.creneau === 'M' ? 'Matin' : 'Après-midi'}
+                                        {' - '}{seanceSelectionnee.lieu_nom}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            if (seanceDivisee) {
+                                                // Désactiver la division : fusionner les associations
+                                                const toutesAssociations = [...associationsPartie1, ...associationsPartie2];
+                                                setAssociations(toutesAssociations);
+                                                setAssociationsPartie1([]);
+                                                setAssociationsPartie2([]);
+                                                setSeanceDivisee(false);
+                                                setPartieActive(1);
+                                            } else {
+                                                // Activer la division : mettre les associations actuelles dans partie 1
+                                                setAssociationsPartie1([...associations]);
+                                                setAssociationsPartie2([]);
+                                                setAssociations([]);
+                                                setSeanceDivisee(true);
+                                                setPartieActive(1);
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '6px 12px',
+                                            backgroundColor: seanceDivisee ? '#ef4444' : '#8b5cf6',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            cursor: 'pointer',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        {seanceDivisee ? '✕ Annuler division' : '✂️ Diviser en 2 parties'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Onglets pour les parties si séance divisée */}
+                            {seanceDivisee && (
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    marginBottom: '16px',
+                                    borderBottom: '2px solid #e5e7eb'
+                                }}>
+                                    <button
+                                        onClick={() => setPartieActive(1)}
+                                        style={{
+                                            padding: '10px 20px',
+                                            backgroundColor: partieActive === 1 ? '#3b82f6' : 'transparent',
+                                            color: partieActive === 1 ? 'white' : '#6b7280',
+                                            border: 'none',
+                                            borderBottom: partieActive === 1 ? '3px solid #2563eb' : '3px solid transparent',
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        📋 Partie 1
+                                    </button>
+                                    <button
+                                        onClick={() => setPartieActive(2)}
+                                        style={{
+                                            padding: '10px 20px',
+                                            backgroundColor: partieActive === 2 ? '#3b82f6' : 'transparent',
+                                            color: partieActive === 2 ? 'white' : '#6b7280',
+                                            border: 'none',
+                                            borderBottom: partieActive === 2 ? '3px solid #2563eb' : '3px solid transparent',
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        📋 Partie 2
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Structure 2 colonnes : Encadrants | Apprenants */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                                {/* Colonne Encadrants */}
+                                <div>
+                                    <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>
+                                        Formateurs / Salariés
+                                    </h3>
+                                    <div style={{
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        padding: '12px',
+                                        minHeight: '300px',
+                                        maxHeight: '400px',
+                                        overflowY: 'auto',
+                                        backgroundColor: '#fefce8'
+                                    }}>
+                                        {seanceSelectionnee && (() => {
+                                            // Récupérer les formateurs et salariés de cette cellule
+                                            const cellKey = seanceSelectionnee.cellKey;
+                                            const formateursCell = formateursParCase[cellKey] || [];
+                                            const salarieId = salariesSelectionnes[cellKey];
+                                            const salarie = salarieId ? salaries.find(s => s.id === salarieId) : null;
+
+                                            return (
+                                                <>
+                                                    {/* Formateurs */}
+                                                    {formateursCell.map(formateurId => {
+                                                        const formateur = formateurs.find(f => f.id === formateurId);
+                                                        if (!formateur) return null;
+
+                                                        return (
+                                            <div
+                                                key={formateur.id}
+                                                onClick={() => {
+                                                    if (apprenantSelectionne) {
+                                                        // Créer association
+                                                        const nouvelleAssoc = {
+                                                            id: Date.now(),
+                                                            encadrant: formateur,
+                                                            apprenant: apprenantSelectionne,
+                                                            notes: ''
+                                                        };
+
+                                                        if (seanceDivisee) {
+                                                            if (partieActive === 1) {
+                                                                setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                            } else {
+                                                                setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                            }
+                                                        } else {
+                                                            setAssociations([...associations, nouvelleAssoc]);
+                                                        }
+                                                        setApprenantSelectionne(null);
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding: '8px 12px',
+                                                    marginBottom: '6px',
+                                                    borderRadius: '6px',
+                                                    backgroundColor: 'white',
+                                                    border: '1px solid #d1d5db',
+                                                    cursor: apprenantSelectionne ? 'pointer' : 'default',
+                                                    transition: 'all 0.2s',
+                                                    opacity: apprenantSelectionne ? 1 : 0.7
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (apprenantSelectionne) {
+                                                        e.currentTarget.style.backgroundColor = '#fef3c7';
+                                                        e.currentTarget.style.borderColor = '#f59e0b';
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.backgroundColor = 'white';
+                                                    e.currentTarget.style.borderColor = '#d1d5db';
+                                                }}
+                                            >
+                                                <div style={{ fontWeight: '500', fontSize: '14px' }}>
+                                                    👤 {formateur.prenom} {formateur.nom}
+                                                </div>
+                                            </div>
+                                                        );
+                                                    })}
+
+                                                    {/* Salarié */}
+                                                    {salarie && (
+                                                        <div
+                                                            onClick={() => {
+                                                                if (apprenantSelectionne) {
+                                                                    // Créer association
+                                                                    const nouvelleAssoc = {
+                                                                        id: Date.now(),
+                                                                        encadrant: salarie,
+                                                                        apprenant: apprenantSelectionne,
+                                                                        notes: ''
+                                                                    };
+
+                                                                    if (seanceDivisee) {
+                                                                        if (partieActive === 1) {
+                                                                            setAssociationsPartie1([...associationsPartie1, nouvelleAssoc]);
+                                                                        } else {
+                                                                            setAssociationsPartie2([...associationsPartie2, nouvelleAssoc]);
+                                                                        }
+                                                                    } else {
+                                                                        setAssociations([...associations, nouvelleAssoc]);
+                                                                    }
+                                                                    setApprenantSelectionne(null);
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                padding: '8px 12px',
+                                                                marginBottom: '6px',
+                                                                borderRadius: '6px',
+                                                                backgroundColor: 'white',
+                                                                border: '1px solid #d1d5db',
+                                                                cursor: apprenantSelectionne ? 'pointer' : 'default',
+                                                                transition: 'all 0.2s',
+                                                                opacity: apprenantSelectionne ? 1 : 0.7
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                if (apprenantSelectionne) {
+                                                                    e.currentTarget.style.backgroundColor = '#fef3c7';
+                                                                    e.currentTarget.style.borderColor = '#f59e0b';
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.currentTarget.style.backgroundColor = 'white';
+                                                                e.currentTarget.style.borderColor = '#d1d5db';
+                                                            }}
+                                                        >
+                                                            <div style={{ fontWeight: '500', fontSize: '14px' }}>
+                                                                👤 {salarie.prenom} {salarie.nom} {salarie.initiales ? `(${salarie.initiales})` : ''}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+
+                                {/* Colonne Apprenants */}
+                                <div>
+                                    <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>
+                                        Apprenants
+                                    </h3>
+                                    <div style={{
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        padding: '12px',
+                                        minHeight: '300px',
+                                        maxHeight: '400px',
+                                        overflowY: 'auto',
+                                        backgroundColor: '#dbeafe'
+                                    }}>
+                                        {seanceSelectionnee && (() => {
+                                            // Récupérer les apprenants de cette cellule
+                                            const cellKey = seanceSelectionnee.cellKey;
+                                            const apprenantsCell = apprenantsParCase[cellKey] || [];
+
+                                            return apprenantsCell.map(apprenantId => {
+                                                const apprenant = apprenants.find(a => a.id === apprenantId);
+                                                if (!apprenant) return null;
+
+                                                const estSelectionne = apprenantSelectionne?.id === apprenant.id;
+
+                                                // Vérifier si déjà associé selon le mode (divisé ou non)
+                                                let estDejaAssocie;
+                                                if (seanceDivisee) {
+                                                    const listePartie = partieActive === 1 ? associationsPartie1 : associationsPartie2;
+                                                    estDejaAssocie = listePartie.some(assoc => assoc.apprenant.id === apprenant.id);
+                                                } else {
+                                                    estDejaAssocie = associations.some(assoc => assoc.apprenant.id === apprenant.id);
+                                                }
+
+                                                return (
+                                                <div
+                                                    key={apprenant.id}
+                                                    onClick={() => {
+                                                        if (!estDejaAssocie) {
+                                                            setApprenantSelectionne(estSelectionne ? null : apprenant);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        padding: '8px 12px',
+                                                        marginBottom: '6px',
+                                                        borderRadius: '6px',
+                                                        backgroundColor: estSelectionne ? '#3b82f6' : (estDejaAssocie ? '#e5e7eb' : 'white'),
+                                                        color: estSelectionne ? 'white' : (estDejaAssocie ? '#9ca3af' : '#111827'),
+                                                        border: `2px solid ${estSelectionne ? '#2563eb' : (estDejaAssocie ? '#d1d5db' : '#d1d5db')}`,
+                                                        cursor: estDejaAssocie ? 'not-allowed' : 'pointer',
+                                                        transition: 'all 0.2s',
+                                                        fontWeight: estSelectionne ? '600' : '500',
+                                                        fontSize: '14px'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        if (!estDejaAssocie && !estSelectionne) {
+                                                            e.currentTarget.style.backgroundColor = '#dbeafe';
+                                                            e.currentTarget.style.borderColor = '#3b82f6';
+                                                        }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        if (!estDejaAssocie && !estSelectionne) {
+                                                            e.currentTarget.style.backgroundColor = 'white';
+                                                            e.currentTarget.style.borderColor = '#d1d5db';
+                                                        }
+                                                    }}
+                                                >
+                                                    {estSelectionne && '✓ '}{apprenant.prenom} {apprenant.nom}
+                                                    {estDejaAssocie && ' ✅'}
+                                                </div>
+                                                );
+                                            });
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section Associations */}
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <h3 style={{ fontSize: '16px', fontWeight: '600', margin: 0, color: '#374151' }}>
+                                        Associations pédagogiques {seanceDivisee && `- Partie ${partieActive}`}
+                                    </h3>
+                                    {(() => {
+                                        const listeActuelle = seanceDivisee
+                                            ? (partieActive === 1 ? associationsPartie1 : associationsPartie2)
+                                            : associations;
+                                        return listeActuelle.length > 0;
+                                    })() && (
+                                        <button
+                                            onClick={() => {
+                                                const printWindow = window.open('', '', 'width=800,height=600');
+                                                printWindow.document.write('<html><head><title>Associations Pédagogiques</title>');
+                                                printWindow.document.write('<style>');
+                                                printWindow.document.write('body { font-family: Arial, sans-serif; padding: 20px; }');
+                                                printWindow.document.write('h2 { color: #1f2937; margin-bottom: 20px; }');
+                                                printWindow.document.write('h3 { color: #374151; margin-top: 30px; margin-bottom: 15px; padding-top: 20px; border-top: 2px solid #e5e7eb; }');
+                                                printWindow.document.write('.assoc-item { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; }');
+                                                printWindow.document.write('.encadrant { font-weight: 600; color: #374151; }');
+                                                printWindow.document.write('.apprenant { color: #3b82f6; font-weight: 500; margin-left: 12px; }');
+                                                printWindow.document.write('.notes { font-style: italic; color: #6b7280; margin-left: 12px; }');
+                                                printWindow.document.write('button { display: none !important; }');
+                                                printWindow.document.write('</style>');
+                                                printWindow.document.write('</head><body>');
+
+                                                const titrePrincipal = 'Associations Pédagogiques - ' + seanceSelectionnee.jour + ' ' + new Date(seanceSelectionnee.date).toLocaleDateString('fr-FR') + ' - ' + (seanceSelectionnee.creneau === 'M' ? 'Matin' : 'Après-midi') + ' - ' + seanceSelectionnee.lieu_nom;
+                                                printWindow.document.write('<h2>' + titrePrincipal + '</h2>');
+
+                                                if (seanceDivisee) {
+                                                    // Imprimer les deux parties
+                                                    printWindow.document.write('<h3>Partie 1</h3>');
+                                                    associationsPartie1.forEach(assoc => {
+                                                        printWindow.document.write('<div class="assoc-item">');
+                                                        printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
+                                                        printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
+                                                        printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.notes) {
+                                                            printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
+                                                        }
+                                                        printWindow.document.write('</div>');
+                                                    });
+
+                                                    printWindow.document.write('<h3>Partie 2</h3>');
+                                                    associationsPartie2.forEach(assoc => {
+                                                        printWindow.document.write('<div class="assoc-item">');
+                                                        printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
+                                                        printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
+                                                        printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.notes) {
+                                                            printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
+                                                        }
+                                                        printWindow.document.write('</div>');
+                                                    });
+                                                } else {
+                                                    // Mode normal : imprimer les associations normales
+                                                    associations.forEach(assoc => {
+                                                        printWindow.document.write('<div class="assoc-item">');
+                                                        printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
+                                                        printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
+                                                        printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.notes) {
+                                                            printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
+                                                        }
+                                                        printWindow.document.write('</div>');
+                                                    });
+                                                }
+
+                                                printWindow.document.write('</body></html>');
+                                                printWindow.document.close();
+                                                printWindow.print();
+                                            }}
+                                            style={{
+                                                padding: '6px 12px',
+                                                backgroundColor: '#8b5cf6',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                fontSize: '13px',
+                                                cursor: 'pointer',
+                                                fontWeight: '500'
+                                            }}
+                                        >
+                                            🖨️ Imprimer
+                                        </button>
+                                    )}
+                                </div>
+                                <div style={{
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    minHeight: '150px',
+                                    backgroundColor: '#f9fafb'
+                                }}>
+                                    {(() => {
+                                        const listeActuelle = seanceDivisee
+                                            ? (partieActive === 1 ? associationsPartie1 : associationsPartie2)
+                                            : associations;
+
+                                        return listeActuelle.length === 0 ? (
+                                            <p style={{ color: '#6b7280', fontSize: '14px', textAlign: 'center' }}>
+                                                {apprenantSelectionne
+                                                    ? `✓ ${apprenantSelectionne.prenom} ${apprenantSelectionne.nom} sélectionné - Cliquez sur un formateur/salarié pour créer l'association`
+                                                    : 'Cliquez sur un apprenant puis sur un formateur/salarié pour créer une association'}
+                                            </p>
+                                        ) : (
+                                            <div id="associations-print-area">
+                                                {listeActuelle.map((assoc, index) => (
+                                                <div
+                                                    key={assoc.id}
+                                                    className="assoc-item"
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '12px',
+                                                        marginBottom: '8px',
+                                                        backgroundColor: 'white',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #e5e7eb'
+                                                    }}
+                                                >
+                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        <span className="encadrant" style={{ fontWeight: '600', color: '#374151' }}>
+                                                            {assoc.encadrant.prenom} {assoc.encadrant.nom}
+                                                        </span>
+                                                        <span style={{ color: '#9ca3af' }}>→</span>
+                                                        <span className="apprenant" style={{ color: '#3b82f6', fontWeight: '500' }}>
+                                                            {assoc.apprenant.prenom} {assoc.apprenant.nom}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => {
+                                                                const notes = prompt('Notes pédagogiques pour ' + assoc.apprenant.prenom + ' :', assoc.notes);
+                                                                if (notes !== null) {
+                                                                    if (seanceDivisee) {
+                                                                        const newAssocs = partieActive === 1
+                                                                            ? [...associationsPartie1]
+                                                                            : [...associationsPartie2];
+                                                                        newAssocs[index].notes = notes;
+                                                                        if (partieActive === 1) {
+                                                                            setAssociationsPartie1(newAssocs);
+                                                                        } else {
+                                                                            setAssociationsPartie2(newAssocs);
+                                                                        }
+                                                                    } else {
+                                                                        const newAssocs = [...associations];
+                                                                        newAssocs[index].notes = notes;
+                                                                        setAssociations(newAssocs);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                padding: '4px 8px',
+                                                                fontSize: '12px',
+                                                                backgroundColor: '#f3f4f6',
+                                                                border: '1px solid #d1d5db',
+                                                                borderRadius: '4px',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            📝 {assoc.notes ? 'Modifier note' : 'Ajouter note'}
+                                                        </button>
+                                                        {assoc.notes && (
+                                                            <span className="notes" style={{ fontSize: '13px', color: '#6b7280', fontStyle: 'italic' }}>
+                                                                "{assoc.notes}"
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (seanceDivisee) {
+                                                                if (partieActive === 1) {
+                                                                    setAssociationsPartie1(associationsPartie1.filter(a => a.id !== assoc.id));
+                                                                } else {
+                                                                    setAssociationsPartie2(associationsPartie2.filter(a => a.id !== assoc.id));
+                                                                }
+                                                            } else {
+                                                                setAssociations(associations.filter(a => a.id !== assoc.id));
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 8px',
+                                                            backgroundColor: '#fee2e2',
+                                                            color: '#dc2626',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '12px',
+                                                            fontWeight: '500'
+                                                        }}
+                                                    >
+                                                        ✕ Supprimer
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     )
 }
