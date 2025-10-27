@@ -175,6 +175,7 @@ function AbsenceApprenant() {
   const [absences, setAbsences] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [filtreNom, setFiltreNom] = useState(''); // Filtre par nom d'apprenant
 
   // État du formulaire
   const [formData, setFormData] = useState({
@@ -661,29 +662,62 @@ function AbsenceApprenant() {
         boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         backdropFilter: 'blur(10px)'
       }}>
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '20px', color: '#333' }}>
-          📋 Absences récentes
-        </h2>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          gap: '20px'
+        }}>
+          <h2 style={{ fontSize: '1.5rem', margin: 0, color: '#333' }}>
+            📋 Absences récentes
+          </h2>
+          <input
+            type="text"
+            placeholder="🔍 Filtrer par nom..."
+            value={filtreNom}
+            onChange={(e) => setFiltreNom(e.target.value)}
+            style={{
+              padding: '8px 15px',
+              border: '1px solid #ddd',
+              borderRadius: '8px',
+              fontSize: '14px',
+              minWidth: '250px',
+              outline: 'none',
+              transition: 'border-color 0.2s'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#667eea'}
+            onBlur={(e) => e.target.style.borderColor = '#ddd'}
+          />
+        </div>
 
-        {absences.length === 0 ? (
-          <p style={{ textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
-            Aucune absence enregistrée
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f5f5f5' }}>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Apprenant</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Type</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Date(s)</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Détails</th>
-                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Motif</th>
-                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {absences.map((absence, index) => (
+        {(() => {
+          // Filtrer les absences par nom d'apprenant
+          const absencesFiltrees = absences.filter(absence => {
+            if (!filtreNom.trim()) return true;
+            const nomComplet = absence.apprenant_nom?.toLowerCase() || '';
+            return nomComplet.includes(filtreNom.toLowerCase());
+          });
+
+          return absencesFiltrees.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
+              {filtreNom.trim() ? `Aucune absence trouvée pour "${filtreNom}"` : 'Aucune absence enregistrée'}
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f5f5f5' }}>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Apprenant</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Type</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Date(s)</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Détails</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Motif</th>
+                    <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {absencesFiltrees.map((absence, index) => (
                   <tr key={absence.id} style={{
                     backgroundColor: index % 2 === 0 ? 'white' : '#f9f9f9',
                     borderBottom: '1px solid #eee'
@@ -744,11 +778,12 @@ function AbsenceApprenant() {
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
