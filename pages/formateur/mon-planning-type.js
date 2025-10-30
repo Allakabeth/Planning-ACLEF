@@ -144,16 +144,37 @@ export default function MonPlanningType() {
             }}>
                 {/* En-tête */}
                 <div style={{ marginBottom: '16px', textAlign: 'center' }}>
-                    <h1 style={{ 
-                        fontSize: '20px', 
-                        fontWeight: 'bold', 
-                        margin: '0 0 6px 0',
-                        color: '#1f2937'
-                    }}>
-                        Mon Planning Type
-                    </h1>
-                    <p style={{ 
-                        fontSize: '14px', 
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '6px' }}>
+                        <h1 style={{
+                            fontSize: '20px',
+                            fontWeight: 'bold',
+                            margin: 0,
+                            color: '#1f2937'
+                        }}>
+                            Mon Planning Type
+                        </h1>
+                        <button
+                            onClick={() => router.push('/formateur')}
+                            style={{
+                                padding: '8px 12px',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                            }}
+                        >
+                            🏠
+                        </button>
+                    </div>
+                    <p style={{
+                        fontSize: '14px',
                         color: '#6b7280',
                         margin: '0'
                     }}>

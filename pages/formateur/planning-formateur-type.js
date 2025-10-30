@@ -709,9 +709,29 @@ export default function PlanningFormateurType() {
 
             {/* En-tête avec aide */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold' }}>
-                    Mon planning type
-                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 'bold' }}>
+                        Mon planning type
+                    </h2>
+                    <button
+                        onClick={() => router.push('/formateur')}
+                        style={{
+                            padding: '6px 10px',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                        }}
+                    >
+                        🏠
+                    </button>
+                </div>
                 <button
                     onClick={() => setShowAide(!showAide)}
                     style={{
