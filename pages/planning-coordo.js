@@ -3022,6 +3022,15 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         const formateur = formateurs.find(f => f.id === formateurId);
                                                         if (!formateur) return null;
 
+                                                        // Compter le nombre d'apprenants associés à ce formateur
+                                                        const listeAssociations = seanceDivisee
+                                                            ? (partieActive === 1 ? associationsPartie1 : associationsPartie2)
+                                                            : associations;
+
+                                                        const countApprenants = listeAssociations.filter(
+                                                            assoc => assoc.encadrant?.id === formateur.id
+                                                        ).length;
+
                                                         return (
                                             <div
                                                 key={formateur.id}
@@ -3087,15 +3096,50 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                     e.currentTarget.style.borderColor = '#d1d5db';
                                                 }}
                                             >
-                                                <div style={{ fontWeight: '500', fontSize: '14px' }}>
-                                                    👤 {formateur.prenom} {formateur.nom}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    fontWeight: '500',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    <span>
+                                                        👤 {formateur.prenom} {formateur.nom}
+                                                    </span>
+                                                    {countApprenants > 0 && (
+                                                        <span style={{
+                                                            backgroundColor: '#10b981',
+                                                            color: 'white',
+                                                            borderRadius: '50%',
+                                                            width: '24px',
+                                                            height: '24px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            fontSize: '12px',
+                                                            fontWeight: 'bold',
+                                                            flexShrink: 0
+                                                        }}>
+                                                            {countApprenants}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                                         );
                                                     })}
 
                                                     {/* Salarié */}
-                                                    {salarie && (
+                                                    {salarie && (() => {
+                                                        // Compter le nombre d'apprenants associés à ce salarié
+                                                        const listeAssociations = seanceDivisee
+                                                            ? (partieActive === 1 ? associationsPartie1 : associationsPartie2)
+                                                            : associations;
+
+                                                        const countApprenants = listeAssociations.filter(
+                                                            assoc => assoc.encadrant?.id === salarie.id
+                                                        ).length;
+
+                                                        return (
                                                         <div
                                                             onClick={async () => {
                                                                 if (apprenantSelectionne) {
@@ -3159,11 +3203,37 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 e.currentTarget.style.borderColor = '#d1d5db';
                                                             }}
                                                         >
-                                                            <div style={{ fontWeight: '500', fontSize: '14px' }}>
-                                                                👤 {salarie.prenom} {salarie.nom} {salarie.initiales ? `(${salarie.initiales})` : ''}
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between',
+                                                                fontWeight: '500',
+                                                                fontSize: '14px'
+                                                            }}>
+                                                                <span>
+                                                                    👤 {salarie.prenom} {salarie.nom} {salarie.initiales ? `(${salarie.initiales})` : ''}
+                                                                </span>
+                                                                {countApprenants > 0 && (
+                                                                    <span style={{
+                                                                        backgroundColor: '#10b981',
+                                                                        color: 'white',
+                                                                        borderRadius: '50%',
+                                                                        width: '24px',
+                                                                        height: '24px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        fontSize: '12px',
+                                                                        fontWeight: 'bold',
+                                                                        flexShrink: 0
+                                                                    }}>
+                                                                        {countApprenants}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    )}
+                                                        );
+                                                    })()}
                                                 </>
                                             );
                                         })()}
