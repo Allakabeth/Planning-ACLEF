@@ -18,6 +18,13 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   const [filtreActif, setFiltreActif] = useState('tous')
   const [formateurFiltre, setFormateurFiltre] = useState('tous')
 
+  // ✅ FONCTION: Convertir date ISO → format français
+  const formatDateFr = (dateISO) => {
+    if (!dateISO) return ''
+    const [year, month, day] = dateISO.split('-')
+    return `${day}-${month}-${year}`
+  }
+
   useEffect(() => {
     chargerDonnees()
   }, [])
@@ -874,7 +881,7 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                     {message.objet || 'Sans objet'}
                   </div>
                   <div style={{ fontSize: '11px', color: '#9ca3af' }}>
-                    {message.date} {message.heure}
+                    {formatDateFr(message.date)} {message.heure}
                   </div>
                   {getBadgeStatut(message)}
                 </div>
@@ -924,13 +931,13 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                   {selectedMessage.objet || 'Sans objet'}
                 </div>
                 <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>
-                  {selectedMessage.expediteur_id ? 
-                    `De: ${getNomFormateur(selectedMessage.expediteur_id)}` : 
-                    `À: ${selectedMessage.destinataire}`
+                  {selectedMessage.expediteur_id ?
+                    `De: ${getNomFormateur(selectedMessage.expediteur_id)}` :
+                    `À: ${selectedMessage.destinataire || 'Coordination ACLEF'}`
                   }
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
-                  {selectedMessage.date} à {selectedMessage.heure}
+                  {formatDateFr(selectedMessage.date)} à {selectedMessage.heure}
                 </div>
                 
                 {/* Actions selon l'état avec bouton Valider */}
@@ -1049,7 +1056,7 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                   fontSize: '12px',
                   color: '#92400e'
                 }}>
-                  ⚠️ <strong>Message archivé</strong> le {selectedMessage.date_archivage}
+                  ⚠️ <strong>Message archivé</strong> le {formatDateFr(selectedMessage.date_archivage)}
                 </div>
               )}
             </div>

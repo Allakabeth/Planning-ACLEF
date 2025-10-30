@@ -15,6 +15,13 @@ export default function MaMessagerie() {
   const { user, isLoading, isAuthenticated } = useFormateurAuth()
   const router = useRouter()
 
+  // ✅ FONCTION: Convertir date ISO → format français
+  const formatDateFr = (dateISO) => {
+    if (!dateISO) return ''
+    const [year, month, day] = dateISO.split('-')
+    return `${day}-${month}-${year}`
+  }
+
   // Protection authentification
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -457,7 +464,7 @@ export default function MaMessagerie() {
                           fontSize: '14px',
                           color: '#666'
                         }}>
-                          {message.date} {message.heure}
+                          {formatDateFr(message.date)} {message.heure}
                         </div>
                       </div>
 
@@ -616,14 +623,14 @@ export default function MaMessagerie() {
                 <div style={{ marginBottom: selectedMessage.archive ? '10px' : '0' }}>
                   <span style={{ fontWeight: 'bold', color: '#333', fontSize: '16px' }}>Date : </span>
                   <span style={{ color: '#666', fontSize: '16px' }}>
-                    {selectedMessage.date} à {selectedMessage.heure}
+                    {formatDateFr(selectedMessage.date)} à {selectedMessage.heure}
                   </span>
                 </div>
                 {selectedMessage.archive && selectedMessage.date_archivage && (
                   <div>
                     <span style={{ fontWeight: 'bold', color: '#f59e0b', fontSize: '16px' }}>Archivé le : </span>
                     <span style={{ color: '#f59e0b', fontSize: '16px' }}>
-                      {selectedMessage.date_archivage}
+                      {formatDateFr(selectedMessage.date_archivage)}
                     </span>
                   </div>
                 )}

@@ -21,6 +21,13 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
     const [absencesEnAttente, setAbsencesEnAttente] = useState([])
     const [isValidating, setIsValidating] = useState(false)
 
+    // ✅ FONCTION: Convertir date ISO → format français
+    const formatDateFr = (dateISO) => {
+        if (!dateISO) return ''
+        const [year, month, day] = dateISO.split('-')
+        return `${day}-${month}-${year}`
+    }
+
     // Configuration des onglets
     const onglets = [
         { 
@@ -242,12 +249,12 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
 
             switch(action) {
                 case 'validee':
-                    objet = `Absence validée - ${absence.date_debut}`
-                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence du ${absence.date_debut} au ${absence.date_fin} a été validée par le coordinateur.\n\nType: ${absence.type}\nVotre planning a été mis à jour automatiquement.\n\nCordialement,\nL'équipe ACLEF`
+                    objet = `Absence validée - ${formatDateFr(absence.date_debut)}`
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été validée par le coordinateur.\n\nType: ${absence.type}\nVotre planning a été mis à jour automatiquement.\n\nCordialement,\nL'équipe ACLEF`
                     break
                 case 'supprimee':
-                    objet = `Absence supprimée - ${absence.date_debut}`
-                    contenu = `Bonjour ${formateur.prenom},\n\nVotre absence du ${absence.date_debut} au ${absence.date_fin} a été supprimée.\n\nVous redevenez disponible selon votre planning type habituel.\n\nCordialement,\nL'équipe ACLEF`
+                    objet = `Absence supprimée - ${formatDateFr(absence.date_debut)}`
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été supprimée.\n\nVous redevenez disponible selon votre planning type habituel.\n\nCordialement,\nL'équipe ACLEF`
                     break
                 default:
                     throw new Error(`Action message inconnue: ${action}`)
