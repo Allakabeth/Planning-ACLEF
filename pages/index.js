@@ -181,10 +181,13 @@ function Dashboard() {
         return false
       }
 
-      // Mettre à jour le heartbeat
+      // Mettre à jour le heartbeat et l'email
       await supabase
         .from('admin_sessions')
-        .update({ heartbeat: new Date().toISOString() })
+        .update({
+          heartbeat: new Date().toISOString(),
+          admin_email: supabaseUser.email // Toujours mettre à jour l'email
+        })
         .eq('id', adminSession.id)
 
       console.log('✅ Session admin valide dans la Table d\'Émeraude')
@@ -395,10 +398,13 @@ function Dashboard() {
             const now = new Date().toISOString()
             await supabase
               .from('admin_sessions')
-              .update({ heartbeat: now })
+              .update({
+                heartbeat: now,
+                admin_email: currentUser.email // Toujours mettre à jour l'email
+              })
               .eq('admin_user_id', currentUser.id)
               .eq('is_active', true)
-            
+
             setLastHeartbeat(now)
             console.log('💡 Heartbeat gardien actif envoyé')
           } else {

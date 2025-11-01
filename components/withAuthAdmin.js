@@ -126,6 +126,7 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
           .update({
             heartbeat: new Date().toISOString(),
             current_page: currentPage,
+            admin_email: supabaseUser.email, // Toujours mettre à jour l'email
             // Nouveau timestamp si changement de page OU si pas de timestamp (arrivée depuis accueil)
             page_entry_time: (isPageChange || isNewArrival) ? new Date().toISOString() : adminSession.page_entry_time
           })
@@ -357,7 +358,10 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
               const now = new Date().toISOString()
               await supabase
                 .from('admin_sessions')
-                .update({ heartbeat: now })
+                .update({
+                  heartbeat: now,
+                  admin_email: currentUser.email // Toujours mettre à jour l'email
+                })
                 .eq('admin_user_id', currentUser.id)
                 .eq('is_active', true)
 
