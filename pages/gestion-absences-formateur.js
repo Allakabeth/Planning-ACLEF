@@ -286,7 +286,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime }) {
     return (
         <div style={{
             minHeight: '100vh',
-            backgroundColor: '#f8fafc',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             padding: '20px'
         }}>
             <div style={{
@@ -311,7 +311,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime }) {
                             color: '#1f2937',
                             margin: '0 0 5px 0'
                         }}>
-                            📊 Gestion Absences Formateur
+                            📊 Gestion Présences Formateur
                         </h1>
                         <p style={{
                             color: '#6b7280',
@@ -336,6 +336,33 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime }) {
                     >
                         Retour Accueil
                     </button>
+                </div>
+
+                {/* Bandeau blanc avec status */}
+                <div className="no-print" style={{
+                    backgroundColor: 'white',
+                    borderRadius: '8px',
+                    padding: '8px 20px',
+                    marginBottom: '20px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    alignItems: 'center'
+                }}>
+                    <div style={{
+                        padding: '4px 8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        borderRadius: '6px',
+                        backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+                        color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+                        border: '1px solid',
+                        borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
+                    }}>
+                        Status : {inactivityTime >= 300 ? '😴 ENDORMI!' :
+                                 inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                                 inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                                 `🟢 ACTIF`}
+                    </div>
                 </div>
 
                 {/* Message */}

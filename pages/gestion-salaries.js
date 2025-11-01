@@ -248,25 +248,7 @@ function GestionSalaries({ user, logout, inactivityTime }) {
                     >
                         🏠 Accueil
                     </button>
-                    
-                    <div style={{
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
-                        color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#d97706' : '#059669',
-                        border: `1px solid ${inactivityTime >= 240 ? '#fca5a5' : inactivityTime >= 180 ? '#fcd34d' : '#6ee7b7'}`
-                    }}>
-                        Status : {inactivityTime >= 300 ? '😴 ENDORMI!' : 
-                                 inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-                                 inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-                                 `🟢 ACTIF`}
-                    </div>
-                    
+
                     <button
                         onClick={logout}
                         style={{
@@ -281,6 +263,33 @@ function GestionSalaries({ user, logout, inactivityTime }) {
                     >
                         🚪 Déconnexion
                     </button>
+                </div>
+            </div>
+
+            {/* Bandeau blanc avec status */}
+            <div className="no-print" style={{
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                padding: '8px 20px',
+                marginBottom: '20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                display: 'flex',
+                alignItems: 'center'
+            }}>
+                <div style={{
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    borderRadius: '6px',
+                    backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+                    color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+                    border: '1px solid',
+                    borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
+                }}>
+                    Status : {inactivityTime >= 300 ? '😴 ENDORMI!' :
+                             inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                             inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                             `🟢 ACTIF`}
                 </div>
             </div>
 

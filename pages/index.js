@@ -28,33 +28,49 @@ const SkeletonLoader = () => {
       <div style={{
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '20px',
+        padding: '12px 20px',
+        marginBottom: '15px',
         boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ 
-            height: '28px', 
-            width: '300px', 
-            borderRadius: '4px', 
-            marginBottom: '10px',
-            ...shimmer 
-          }} />
-          <div style={{ 
-            height: '16px', 
-            width: '200px', 
-            borderRadius: '4px',
-            ...shimmer 
-          }} />
-        </div>
-        <div style={{ 
-          height: '40px', 
-          width: '120px', 
+        <div style={{
+          height: '28px',
+          width: '300px',
+          borderRadius: '4px',
+          ...shimmer
+        }} />
+        <div style={{
+          height: '40px',
+          width: '120px',
           borderRadius: '8px',
-          ...shimmer 
+          ...shimmer
+        }} />
+      </div>
+
+      {/* Bandeau blanc Skeleton */}
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '10px 20px',
+        marginBottom: '15px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }}>
+        <div style={{
+          height: '16px',
+          width: '150px',
+          borderRadius: '4px',
+          ...shimmer
+        }} />
+        <div style={{
+          height: '24px',
+          width: '80px',
+          borderRadius: '4px',
+          ...shimmer
         }} />
       </div>
 
@@ -440,42 +456,23 @@ function Dashboard() {
       <div style={{
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '20px',
+        padding: '12px 20px',
+        marginBottom: '15px',
         boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <div>
-          <h1 style={{
-            fontSize: '28px',
-            fontWeight: 'bold',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            margin: 0
-          }}>
-            ACLEF Planning Administration
-          </h1>
-          <p style={{ color: '#6b7280', marginTop: '5px' }}>
-            Bienvenue {user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'ACLEF Admin'}
-            <span style={{ 
-              marginLeft: '5px', 
-              fontSize: '12px', 
-              color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
-              backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontWeight: 'bold'
-            }}>
-              {inactivityTime >= 300 ? '😴 ENDORMI!' : 
-               inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-               inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-               `🟢 Actif`}
-            </span>
-          </p>
-        </div>
+        <h1 style={{
+          fontSize: '28px',
+          fontWeight: 'bold',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          margin: 0
+        }}>
+          ACLEF Planning Administration
+        </h1>
         <button
           onClick={logout}
           style={{
@@ -494,6 +491,35 @@ function Dashboard() {
         >
           🚪 Déconnexion
         </button>
+      </div>
+
+      {/* Bandeau blanc - Bienvenue et statut */}
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '10px 20px',
+        marginBottom: '15px',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }}>
+        <p style={{ color: '#6b7280', margin: 0 }}>
+          Bienvenue {user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'ACLEF Admin'}
+        </p>
+        <span style={{
+          fontSize: '12px',
+          color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+          backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          fontWeight: 'bold'
+        }}>
+          {inactivityTime >= 300 ? '😴 ENDORMI!' :
+           inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+           inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+           `🟢 Actif`}
+        </span>
       </div>
 
       {/* Layout Principal : Planning + Gestion | Messagerie */}

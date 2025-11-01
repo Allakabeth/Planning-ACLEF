@@ -819,7 +819,7 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
         return (
             <div style={{
                 minHeight: '100vh',
-                backgroundColor: '#ffffff',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -829,7 +829,7 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                     padding: '40px'
                 }}>
                     <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-                    <div style={{ color: '#667eea', fontSize: '18px' }}>Chargement des formateurs...</div>
+                    <div style={{ color: 'white', fontSize: '18px' }}>Chargement des formateurs...</div>
                 </div>
             </div>
         )
@@ -838,7 +838,7 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
     return (
         <div style={{
             minHeight: '100vh',
-            backgroundColor: '#f8fafc',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             padding: '20px'
         }}>
             {/* Header avec navigation */}
@@ -877,23 +877,6 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                         Accueil
                     </button>
 
-                    {/* Badge de statut avec compte à rebours */}
-                    <div style={{
-                        padding: '4px 8px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        borderRadius: '6px',
-                        backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
-                        color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
-                        border: '1px solid',
-                        borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
-                    }}>
-                        Status : {inactivityTime >= 300 ? '😴 ENDORMI!' : 
-                                 inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-                                 inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-                                 `🟢 ACTIF`}
-                    </div>
-                    
                     {/* Bouton déconnexion */}
                     <button
                         onClick={logout}
@@ -916,6 +899,34 @@ function PriseControleFormateur({ user, logout, inactivityTime }) {
                 </div>
             </div>
 
+            {/* Bandeau blanc avec status */}
+            <div className="no-print" style={{
+                maxWidth: '1200px',
+                margin: '0 auto',
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                padding: '8px 20px',
+                marginBottom: '20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                display: 'flex',
+                alignItems: 'center'
+            }}>
+                <div style={{
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    borderRadius: '6px',
+                    backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+                    color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+                    border: '1px solid',
+                    borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
+                }}>
+                    Status : {inactivityTime >= 300 ? '😴 ENDORMI!' :
+                             inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                             inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                             `🟢 ACTIF`}
+                </div>
+            </div>
 
             {/* Messages */}
             {message && (

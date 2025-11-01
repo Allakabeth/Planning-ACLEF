@@ -168,7 +168,7 @@ const SkeletonAbsenceLoader = () => {
   );
 };
 
-function AbsenceApprenant() {
+function AbsenceApprenant({ user, logout, inactivityTime }) {
   const [loading, setLoading] = useState(true);
   const [apprenants, setApprenants] = useState([]);
   const [lieux, setLieux] = useState([]);
@@ -346,26 +346,31 @@ function AbsenceApprenant() {
         alignItems: 'center',
         backdropFilter: 'blur(10px)'
       }}>
-        <div>
+        <nav style={{ fontSize: '14px' }}>
+          <span style={{ color: '#6b7280' }}>Dashboard</span>
+          <span style={{ margin: '0 10px', color: '#9ca3af' }}>/</span>
+          <span style={{ color: '#8b5cf6', fontWeight: '500' }}>Gestion des Absences Apprenants</span>
+        </nav>
+
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             onClick={() => router.push('/')}
             style={{
-              background: 'none',
+              padding: '8px 16px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
               border: 'none',
-              color: '#666',
+              borderRadius: '8px',
               fontSize: '14px',
-              cursor: 'pointer',
-              textDecoration: 'underline'
+              cursor: 'pointer'
             }}
           >
-            ← Retour au tableau de bord
+            Accueil
           </button>
-        </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <span style={{ color: '#666', fontSize: '14px' }}>👤 Administrateur</span>
+
           <button
-            onClick={() => router.push('/api/auth/logout')}
+            onClick={logout}
             style={{
               backgroundColor: '#ff4757',
               color: 'white',
@@ -378,6 +383,33 @@ function AbsenceApprenant() {
           >
             Déconnexion
           </button>
+        </div>
+      </div>
+
+      {/* Bandeau blanc avec status */}
+      <div className="no-print" style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        padding: '8px 20px',
+        marginBottom: '20px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          padding: '4px 8px',
+          fontSize: '12px',
+          fontWeight: '600',
+          borderRadius: '6px',
+          backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
+          color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
+          border: '1px solid',
+          borderColor: inactivityTime >= 240 ? '#fecaca' : inactivityTime >= 180 ? '#fde68a' : '#bbf7d0'
+        }}>
+          Status : {inactivityTime >= 300 ? '😴 ENDORMI!' :
+                   inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                   inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
+                   `🟢 ACTIF`}
         </div>
       </div>
 
