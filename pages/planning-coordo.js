@@ -411,7 +411,10 @@ function calculateColumnWidth(lieuxParJour) {
 
 function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const router = useRouter();
-    
+
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États pour les données de base
     const [salaries, setSalaries] = useState([]);
     const [formateurs, setFormateurs] = useState([]);
@@ -2408,68 +2411,72 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
                         <button
                             onClick={dupliquerVersProchaineSemaine}
-                            disabled={isLoading}
+                            disabled={isLoading || !canEdit}
                             style={{
                                 padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#8b5cf6',
+                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#8b5cf6',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 fontSize: '14px',
                                 fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
                             }}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Duplication...' : '📋 Dupliquer S+1'}
                         </button>
 
                         <button
                             onClick={handleEnregistrerBrouillon}
-                            disabled={isLoading}
+                            disabled={isLoading || !canEdit}
                             style={{
                                 padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#6b7280',
+                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#6b7280',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 fontSize: '14px',
                                 fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
                             }}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Sauvegarde...' : 'Enregistrer'}
                         </button>
 
                         <button
                             onClick={handleValiderTransmettre}
-                            disabled={isLoading}
+                            disabled={isLoading || !canEdit}
                             style={{
                                 padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#10b981',
+                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#10b981',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 fontSize: '14px',
                                 fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
                             }}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Validation...' : 'Valider & Transmettre'}
                         </button>
 
                         <button
                             onClick={handleValiderModifications}
-                            disabled={isLoading}
+                            disabled={isLoading || !canEdit}
                             style={{
                                 padding: '6px 16px',
-                                backgroundColor: isLoading ? '#94a3b8' : '#f59e0b',
+                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#f59e0b',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 fontSize: '14px',
                                 fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer'
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
                             }}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Validation...' : '🔄 Valider Modifications'}
                         </button>
@@ -2561,28 +2568,13 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                 <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '6px' }}>
                                                     {getDateOfWeek(dayIndex, currentDate)}
                                                 </div>
-                                                <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
-                                                    <button 
-                                                        onClick={() => handleAddLieu(dayIndex)}
-                                                        style={{
-                                                            padding: '3px 6px',
-                                                            background: '#10b981',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            borderRadius: '3px',
-                                                            fontSize: '11px',
-                                                            cursor: 'pointer',
-                                                            fontWeight: 'bold'
-                                                        }}
-                                                    >
-                                                        +
-                                                    </button>
-                                                    {(lieuxParJour[dayIndex] || []).length > 1 && (
-                                                        <button 
-                                                            onClick={() => handleRemoveLieu(dayIndex, lieuIndex)}
+                                                {canEdit && (
+                                                    <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+                                                        <button
+                                                            onClick={() => handleAddLieu(dayIndex)}
                                                             style={{
                                                                 padding: '3px 6px',
-                                                                background: '#ef4444',
+                                                                background: '#10b981',
                                                                 color: 'white',
                                                                 border: 'none',
                                                                 borderRadius: '3px',
@@ -2591,10 +2583,27 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 fontWeight: 'bold'
                                                             }}
                                                         >
-                                                            −
+                                                            +
                                                         </button>
-                                                    )}
-                                                </div>
+                                                        {(lieuxParJour[dayIndex] || []).length > 1 && (
+                                                            <button
+                                                                onClick={() => handleRemoveLieu(dayIndex, lieuIndex)}
+                                                                style={{
+                                                                    padding: '3px 6px',
+                                                                    background: '#ef4444',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    borderRadius: '3px',
+                                                                    fontSize: '11px',
+                                                                    cursor: 'pointer',
+                                                                    fontWeight: 'bold'
+                                                                }}
+                                                            >
+                                                                −
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </th>
                                     ))
@@ -2639,7 +2648,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                        <select 
+                                                        <select
+                                                            disabled={!canEdit}
                                                             style={{
                                                                 width: '100%',
                                                                 padding: '4px',
@@ -2648,7 +2658,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 fontSize: '11px',
                                                                 fontWeight: '500',
                                                                 background: 'rgba(255,255,255,0.9)',
-                                                                color: '#374151'
+                                                                color: '#374151',
+                                                                cursor: canEdit ? 'pointer' : 'not-allowed'
                                                             }}
                                                             value={selectedLieuId || ""}
                                                             onChange={(e) => handleLieuChange(dayIndex, lieuIndex, creneau, e.target.value)}
@@ -2660,11 +2671,12 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         </select>
                                                         {/* ⭐ VERSION IMPRESSION */}
                                                         <div className="print-only print-text">
-                                                            {selectedLieuId ? getNomLieu(selectedLieuId) : 
+                                                            {selectedLieuId ? getNomLieu(selectedLieuId) :
                                                              <span className="print-text-empty">Aucun lieu</span>}
                                                         </div>
 
-                                                        <select 
+                                                        <select
+                                                            disabled={!canEdit}
                                                             style={{
                                                                 width: '100%',
                                                                 padding: '4px',
@@ -2672,7 +2684,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 borderRadius: '4px',
                                                                 fontSize: '11px',
                                                                 background: 'rgba(255,255,255,0.9)',
-                                                                color: '#374151'
+                                                                color: '#374151',
+                                                                cursor: canEdit ? 'pointer' : 'not-allowed'
                                                             }}
                                                             value={salariesSelectionnes[cellKey] || ""}
                                                             onChange={(e) => handleSalarieChange(dayIndex, lieuIndex, creneau, e.target.value)}
@@ -2710,6 +2723,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 return (
                                                                     <React.Fragment key={i}>
                                                                         <select
+                                                                            disabled={!canEdit}
                                                                             style={{
                                                                                 width: '100%',
                                                                                 padding: '3px',
@@ -2718,7 +2732,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                                 fontSize: '10px',
                                                                                 background: couleursEnregistrees[cellKey] || 'rgba(255,255,255,0.9)',
                                                                                 color: '#374151',
-                                                                                marginBottom: '3px'
+                                                                                marginBottom: '3px',
+                                                                                cursor: canEdit ? 'pointer' : 'not-allowed'
                                                                             }}
                                                                             value={selectedId}
                                                                             onChange={(e) => handleFormateurChange(dayIndex, lieuIndex, creneau, i, e.target.value)}
@@ -2753,28 +2768,13 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 );
                                                             })}
 
-                                                            <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
-                                                                <button
-                                                                    onClick={() => handleAddFormateur(dayIndex, lieuIndex, creneau)}
-                                                                    style={{
-                                                                        padding: '3px 6px',
-                                                                        background: '#3b82f6',
-                                                                        color: 'white',
-                                                                        border: 'none',
-                                                                        borderRadius: '3px',
-                                                                        fontSize: '10px',
-                                                                        cursor: 'pointer',
-                                                                        fontWeight: 'bold'
-                                                                    }}
-                                                                >
-                                                                    +
-                                                                </button>
-                                                                {(formateursParCase[cellKey] || []).length > 0 && (
+                                                            {canEdit && (
+                                                                <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
                                                                     <button
-                                                                        onClick={() => handleRemoveFormateur(dayIndex, lieuIndex, creneau)}
+                                                                        onClick={() => handleAddFormateur(dayIndex, lieuIndex, creneau)}
                                                                         style={{
                                                                             padding: '3px 6px',
-                                                                            background: '#ef4444',
+                                                                            background: '#3b82f6',
                                                                             color: 'white',
                                                                             border: 'none',
                                                                             borderRadius: '3px',
@@ -2783,10 +2783,27 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                             fontWeight: 'bold'
                                                                         }}
                                                                     >
-                                                                        −
+                                                                        +
                                                                     </button>
-                                                                )}
-                                                            </div>
+                                                                    {(formateursParCase[cellKey] || []).length > 0 && (
+                                                                        <button
+                                                                            onClick={() => handleRemoveFormateur(dayIndex, lieuIndex, creneau)}
+                                                                            style={{
+                                                                                padding: '3px 6px',
+                                                                                background: '#ef4444',
+                                                                                color: 'white',
+                                                                                border: 'none',
+                                                                                borderRadius: '3px',
+                                                                                fontSize: '10px',
+                                                                                cursor: 'pointer',
+                                                                                fontWeight: 'bold'
+                                                                            }}
+                                                                        >
+                                                                            −
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
 
                                                         {/* RÉACTIVATION PROGRESSIVE - Étape 1: Activation de base */}
@@ -2805,38 +2822,41 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             onRemoveApprenant={handleRemoveApprenant}
                                                             disabled={!selectedLieuId}
                                                             couleurEnregistree={couleursEnregistrees[cellKey]}
+                                                            readOnly={!canEdit}
                                                         />
 
                                                         {/* Bouton Organisation Pédagogique */}
-                                                        <div style={{ textAlign: 'center', marginTop: '8px' }}>
-                                                            <button
-                                                                onClick={() => {
-                                                                    setSeanceSelectionnee({
-                                                                        date: getWeekDates(currentDate)[dayIndex],
-                                                                        jour: jours[dayIndex],
-                                                                        creneau: creneau === 'Matin' ? 'M' : 'AM',
-                                                                        lieu_id: selectedLieuId,
-                                                                        lieu_nom: lieux.find(l => l.id === selectedLieuId)?.nom || '',
-                                                                        dayIndex: dayIndex,
-                                                                        lieuIndex: lieuIndex,
-                                                                        cellKey: cellKey
-                                                                    });
-                                                                    setShowModalOrganisation(true);
-                                                                }}
-                                                                disabled={!selectedLieuId}
-                                                                style={{
-                                                                    fontSize: '18px',
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    cursor: selectedLieuId ? 'pointer' : 'not-allowed',
-                                                                    opacity: selectedLieuId ? 1 : 0.3,
-                                                                    padding: '4px'
-                                                                }}
-                                                                title="Organiser la séance pédagogique"
-                                                            >
-                                                                📋
-                                                            </button>
-                                                        </div>
+                                                        {canEdit && (
+                                                            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setSeanceSelectionnee({
+                                                                            date: getWeekDates(currentDate)[dayIndex],
+                                                                            jour: jours[dayIndex],
+                                                                            creneau: creneau === 'Matin' ? 'M' : 'AM',
+                                                                            lieu_id: selectedLieuId,
+                                                                            lieu_nom: lieux.find(l => l.id === selectedLieuId)?.nom || '',
+                                                                            dayIndex: dayIndex,
+                                                                            lieuIndex: lieuIndex,
+                                                                            cellKey: cellKey
+                                                                        });
+                                                                        setShowModalOrganisation(true);
+                                                                    }}
+                                                                    disabled={!selectedLieuId}
+                                                                    style={{
+                                                                        fontSize: '18px',
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: selectedLieuId ? 'pointer' : 'not-allowed',
+                                                                        opacity: selectedLieuId ? 1 : 0.3,
+                                                                        padding: '4px'
+                                                                    }}
+                                                                    title="Organiser la séance pédagogique"
+                                                                >
+                                                                    📋
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </td>
                                             );

@@ -148,6 +148,7 @@ function Dashboard() {
   const [sessionValid, setSessionValid] = useState(false)
   const [inactivityTime, setInactivityTime] = useState(0) // Temps d'inactivité en secondes
   const [lastHeartbeat, setLastHeartbeat] = useState(null) // Dernier heartbeat
+  const [connectedAdmins, setConnectedAdmins] = useState([]) // Liste des admins connectés
   const router = useRouter()
 
   const verifyAdminSession = async (supabaseUser) => {
@@ -192,6 +193,44 @@ function Dashboard() {
     } catch (error) {
       console.error('Erreur vérification session admin:', error)
       return false
+    }
+  }
+
+  // Fonction pour récupérer la liste des admins connectés
+  const fetchConnectedAdmins = async () => {
+    try {
+      // Récupérer les sessions actives avec l'email directement
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('admin_sessions')
+        .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+        .eq('is_active', true)
+        .order('heartbeat', { ascending: false })
+
+      if (sessionsError) {
+        console.error('❌ Erreur récupération sessions:', sessionsError)
+        return
+      }
+
+      if (!sessions || sessions.length === 0) {
+        console.log('👥 Aucun admin connecté')
+        setConnectedAdmins([])
+        return
+      }
+
+      // Formater les données pour l'affichage
+      const adminsFormatted = sessions.map(session => ({
+        email: session.admin_email || 'Inconnu',
+        name: session.admin_email ? session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1) : 'Inconnu',
+        currentPage: session.current_page,
+        priority: session.page_priority,
+        lastActive: session.heartbeat
+      }))
+
+      setConnectedAdmins(adminsFormatted)
+      console.log('👥 Admins connectés:', adminsFormatted)
+
+    } catch (error) {
+      console.error('❌ Erreur fetchConnectedAdmins:', error)
     }
   }
 
@@ -403,6 +442,41 @@ function Dashboard() {
     }
   }, [router, sessionValid])
 
+  // 👥 Charger et écouter les admins connectés en temps réel
+  useEffect(() => {
+    if (!user) return
+
+    // Charger la liste initiale
+    fetchConnectedAdmins()
+
+    // Écouter les changements en temps réel
+    const channel = supabase
+      .channel('admin_sessions_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'admin_sessions'
+        },
+        (payload) => {
+          console.log('🔄 Changement admin_sessions détecté, refresh liste admins')
+          fetchConnectedAdmins()
+        }
+      )
+      .subscribe()
+
+    // Refresh périodique toutes les 30 secondes
+    const refreshInterval = setInterval(() => {
+      fetchConnectedAdmins()
+    }, 30000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(refreshInterval)
+    }
+  }, [user])
+
   const logout = async () => {
     try {
       // 1. Désactiver la session admin
@@ -511,7 +585,7 @@ function Dashboard() {
         </button>
       </div>
 
-      {/* Bandeau blanc - Bienvenue et statut */}
+      {/* Bandeau blanc - Bienvenue et admins connectés */}
       <div style={{
         backgroundColor: 'white',
         borderRadius: '12px',
@@ -520,11 +594,67 @@ function Dashboard() {
         boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
         display: 'flex',
         alignItems: 'center',
-        gap: '12px'
+        gap: '15px'
       }}>
-        <p style={{ color: '#6b7280', margin: 0 }}>
+        <p style={{ color: '#6b7280', margin: 0, fontSize: '16px' }}>
           Bienvenue {user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'ACLEF Admin'}
         </p>
+
+        {/* Liste des autres admins connectés */}
+        {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+          <>
+            <div style={{
+              width: '1px',
+              height: '24px',
+              backgroundColor: '#e5e7eb'
+            }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+              <span style={{
+                color: '#9ca3af',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                👥
+              </span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 8px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: '13px'
+                  }}>
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: '#10b981',
+                      flexShrink: 0
+                    }} />
+                    <span style={{ color: '#374151', fontWeight: '500' }}>
+                      {admin.name}
+                    </span>
+                    {admin.currentPage && admin.currentPage !== '/' && (
+                      <span style={{
+                        fontSize: '11px',
+                        color: '#6b7280',
+                        backgroundColor: '#f3f4f6',
+                        padding: '1px 4px',
+                        borderRadius: '3px'
+                      }}>
+                        {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Layout Principal : Planning + Gestion | Messagerie */}

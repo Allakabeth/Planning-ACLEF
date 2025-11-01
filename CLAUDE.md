@@ -17,13 +17,15 @@ IMPORTANTE : Cette app FONCTIONNE. Ne pas tout refaire.
 
 **2. \*\*TOUJOURS demander avant de refactorer\*\***
 
-**3. \*\*NE JAMAIS coder en dur des données\*\*** 
+**3. \*\*NE JAMAIS coder en dur des données\*\***
 
 **4. \*\*NE JAMAIS ajouter de fallbacks cachés\*\***
 
 **5. \*\*Si tu ne comprends pas, DEMANDE. Ne devine pas.\*\***
 
 **6. \*\*Ne Commit jamais sans mon autorisation\*\***
+
+**7. \*\*Toujours lire GUIDE-MCP-SUPABASE.md avant de travailler sur la bdd\*\***
 
 
 

@@ -17,7 +17,8 @@ export default function MenuApprenants({
   onAddApprenant,            // handler existant: (dayIndex, lieuIndex, creneau)
   onRemoveApprenant,         // handler existant: (dayIndex, lieuIndex, creneau)
   disabled = false,
-  couleurEnregistree         // NOUVEAU: couleur persistante post-enregistrement
+  couleurEnregistree,        // NOUVEAU: couleur persistante post-enregistrement
+  readOnly = false           // NOUVEAU: mode lecture seule (consultation)
 }) {
   // État pour apprenants disponibles après filtrage intelligent
   const [apprenantsDisponibles, setApprenantsDisponibles] = useState([]);
@@ -282,11 +283,12 @@ export default function MenuApprenants({
                 (couleurEnregistree || 'rgba(255,255,255,0.9)'),
               color: isPresenceExceptionnelle ? 'white' : '#000000',
               marginBottom: '3px',
-              fontWeight: isPresenceExceptionnelle ? 'bold' : 'normal'
+              fontWeight: isPresenceExceptionnelle ? 'bold' : 'normal',
+              cursor: readOnly ? 'not-allowed' : 'pointer'
             }}
             value={selectedId}
             onChange={(e) => onApprenantChange(dayIdx, lieuIdx, creneauName, i, e.target.value)}
-            disabled={disabled || loading}
+            disabled={disabled || loading || readOnly}
           >
             <option value="">
               {loading ? '⏳ Filtrage...' : 
@@ -319,29 +321,13 @@ export default function MenuApprenants({
       })}
 
       {/* Boutons +/- identiques à l'existant */}
-      <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginTop: '3px' }}>
-        <button
-          onClick={() => onAddApprenant(dayIdx, lieuIdx, creneauName)}
-          style={{
-            padding: '3px 6px',
-            background: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '3px',
-            fontSize: '10px',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-          disabled={disabled}
-        >
-          +
-        </button>
-        {selectedApprenants.length > 0 && (
+      {!readOnly && (
+        <div className="no-print" style={{ display: 'flex', gap: '3px', justifyContent: 'center', marginTop: '3px' }}>
           <button
-            onClick={() => onRemoveApprenant(dayIdx, lieuIdx, creneauName)}
+            onClick={() => onAddApprenant(dayIdx, lieuIdx, creneauName)}
             style={{
               padding: '3px 6px',
-              background: '#ef4444',
+              background: '#3b82f6',
               color: 'white',
               border: 'none',
               borderRadius: '3px',
@@ -351,10 +337,28 @@ export default function MenuApprenants({
             }}
             disabled={disabled}
           >
-            −
+            +
           </button>
-        )}
-      </div>
+          {selectedApprenants.length > 0 && (
+            <button
+              onClick={() => onRemoveApprenant(dayIdx, lieuIdx, creneauName)}
+              style={{
+                padding: '3px 6px',
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                fontSize: '10px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+              disabled={disabled}
+            >
+              −
+            </button>
+          )}
+        </div>
+      )}
 
       </div>
     </>
