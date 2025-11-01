@@ -217,14 +217,16 @@ function Dashboard() {
         return
       }
 
-      // Formater les données pour l'affichage
-      const adminsFormatted = sessions.map(session => ({
-        email: session.admin_email || 'Inconnu',
-        name: session.admin_email ? session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1) : 'Inconnu',
-        currentPage: session.current_page,
-        priority: session.page_priority,
-        lastActive: session.heartbeat
-      }))
+      // Formater les données pour l'affichage - ne garder que ceux avec email valide
+      const adminsFormatted = sessions
+        .filter(session => session.admin_email) // Filtrer les sessions sans email
+        .map(session => ({
+          email: session.admin_email,
+          name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+          currentPage: session.current_page,
+          priority: session.page_priority,
+          lastActive: session.heartbeat
+        }))
 
       setConnectedAdmins(adminsFormatted)
       console.log('👥 Admins connectés:', adminsFormatted)

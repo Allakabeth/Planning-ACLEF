@@ -441,6 +441,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [filtreDisponibilite, setFiltreDisponibilite] = useState('toutes');
     const [showModalOrganisation, setShowModalOrganisation] = useState(false);
     const [seanceSelectionnee, setSeanceSelectionnee] = useState(null);
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
 
     // États pour la modal Organisation Pédagogique
     const [apprenantSelectionne, setApprenantSelectionne] = useState(null);
@@ -680,6 +681,46 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         }
     };
 
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            // Récupérer les sessions actives avec l'email directement
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false });
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                console.log('👥 Aucun admin connecté');
+                setConnectedAdmins([]);
+                return;
+            }
+
+            // Formater les données pour l'affichage - ne garder que ceux avec email valide
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email) // Filtrer les sessions sans email
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+            console.log('👥 Admins connectés:', adminsFormatted);
+
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
+
     // RÉCUPÉRATION DES DONNÉES DE BASE
     useEffect(() => {
         const fetchData = async () => {
@@ -711,12 +752,47 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     useEffect(() => {
         console.log('🎧 PRINCE démarre écoute active des ordres du ROI...');
         const interval = ecouterCommandesRoi();
-        
+
         return () => {
             console.log('🔇 PRINCE arrête écoute des ordres ROI');
             clearInterval(interval);
         };
     }, []); // Pas de dépendances pour écoute continue
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        // Charger la liste initiale
+        fetchConnectedAdmins();
+
+        // Écouter les changements en temps réel
+        const channel = supabase
+            .channel('admin_sessions_changes_coordo')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                (payload) => {
+                    console.log('🔄 Changement admin_sessions détecté, refresh liste admins');
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        // Refresh périodique toutes les 30 secondes
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
 
     // ☆☆☆ FONCTION CORRIGÉE - PRIORITÉ DISPO EXCEPTIONNELLE ☆☆☆
     const isFormateurAbsent = (formateurId, dateStr) => {
@@ -2220,6 +2296,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     borderRadius: '0 0 12px 12px',
                     padding: '8px 20px',
                     marginBottom: '10px',
+                    marginLeft: '20px',
+                    marginRight: '20px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -2252,20 +2330,37 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         
                     </div>
 
-                    <button
-                        onClick={() => router.push('/')}
-                        style={{
-                            padding: '8px 16px',
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '14px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Accueil
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                            onClick={() => router.push('/')}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Accueil
+                        </button>
+                        <button
+                            onClick={logout}
+                            style={{
+                                padding: '8px 16px',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            🚪 Déconnexion
+                        </button>
+                    </div>
                 </div>
 
                 <div className="print-title">
@@ -2282,7 +2377,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     marginRight: '20px',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    gap: '15px'
                 }}>
                     {priority && priority < 999 && (
                         <div style={{
@@ -2300,6 +2396,62 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         }}>
                             {priority}
                         </div>
+                    )}
+
+                    {/* Liste des autres admins connectés */}
+                    {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+                        <>
+                            <div style={{
+                                width: '1px',
+                                height: '24px',
+                                backgroundColor: '#e5e7eb'
+                            }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                <span style={{
+                                    color: '#9ca3af',
+                                    fontSize: '12px',
+                                    fontWeight: '600'
+                                }}>
+                                    👥
+                                </span>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: '#f9fafb',
+                                            borderRadius: '6px',
+                                            border: '1px solid #e5e7eb',
+                                            fontSize: '13px'
+                                        }}>
+                                            <div style={{
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                backgroundColor: '#10b981',
+                                                flexShrink: 0
+                                            }} />
+                                            <span style={{ color: '#374151', fontWeight: '500' }}>
+                                                {admin.name}
+                                            </span>
+                                            {admin.currentPage && admin.currentPage !== '/' && admin.currentPage !== '/planning-coordo' && (
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    color: '#6b7280',
+                                                    backgroundColor: '#f3f4f6',
+                                                    padding: '1px 4px',
+                                                    borderRadius: '3px'
+                                                }}>
+                                                    {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
 
@@ -2479,22 +2631,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Validation...' : '🔄 Valider Modifications'}
-                        </button>
-
-                        <button
-                            onClick={logout}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: '#dc2626',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            🚪 Déconnexion
                         </button>
                     </div>
                 </div>
