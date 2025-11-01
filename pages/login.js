@@ -18,53 +18,8 @@ export default function LoginAdmin() {
     const createAdminSession = async (user) => {
         try {
             const sessionToken = generateSessionToken()
-            
-            // 🛡️ VERROU SACRÉ : Vérifier qu'AUCUN AUTRE gardien n'est connecté
-            const { data: otherActiveSessions, error: checkError } = await supabase
-                .from('admin_sessions')
-                .select('*')
-                .neq('admin_user_id', user.id)  // ← DIFFÉRENT de l'utilisateur actuel
-                .eq('is_active', true)
 
-            if (checkError) {
-                console.error('Erreur vérification sessions:', checkError)
-                throw new Error('Erreur de vérification des accès')
-            }
-
-            // 🚨 SI UN AUTRE GARDIEN EST DÉJÀ CONNECTÉ → VÉRIFIER S'IL DORT
-            if (otherActiveSessions && otherActiveSessions.length > 0) {
-                const autreGardien = otherActiveSessions[0]
-                const nomAutreGardien = autreGardien.email_admin
-                
-                // ⏰ Vérifier si le gardien dort (inactif depuis plus de 1 minute - TEST)
-                const dernierHeartbeat = new Date(autreGardien.heartbeat)
-                const maintenant = new Date()
-                const minutesInactif = (maintenant - dernierHeartbeat) / (1000 * 60)
-                
-                console.log(`🕐 Gardien ${nomAutreGardien} inactif depuis ${minutesInactif.toFixed(1)} minutes`)
-                
-                if (minutesInactif > 1) { // TEST : 1 minute
-                    console.log('😴 Gardien endormi détecté, expulsion en cours...')
-                    
-                    // 🚪 EXPULSION DOUCE du gardien endormi
-                    await supabase
-                        .from('admin_sessions')
-                        .update({ is_active: false })
-                        .eq('id', autreGardien.id)
-                    
-                    console.log('✅ Gardien endormi expulsé, accès autorisé')
-                    // Continuer l'authentification normalement
-                } else {
-                    console.warn('🚨 ACCÈS REFUSÉ : Un autre gardien est déjà dans le temple:', nomAutreGardien)
-                    console.log('🚪 Redirection vers la fausse porte...')
-                    
-                    // 🚪 REDIRECTION SILENCIEUSE vers la fausse porte avec info gardien
-                    router.push(`/login-temporaire?gardien=${encodeURIComponent(nomAutreGardien)}`)
-                    return null  // Arrêter l'exécution sans erreur
-                }
-            }
-
-            // ✅ AUCUN AUTRE GARDIEN → Vérifier les sessions de CET utilisateur
+            // ✅ Vérifier les sessions de CET utilisateur
             const { data: existingSessions } = await supabase
                 .from('admin_sessions')
                 .select('*')
@@ -151,13 +106,8 @@ export default function LoginAdmin() {
                 throw new Error('Échec de l\'authentification')
             }
 
-            // 🛡️ CRÉER/VÉRIFIER SESSION AVEC VERROU SACRÉ
-            const sessionResult = await createAdminSession(data.user)
-            
-            // Si redirection vers fausse porte, arrêter ici
-            if (sessionResult === null) {
-                return // Redirection en cours, ne pas continuer
-            }
+            // 🛡️ CRÉER/VÉRIFIER SESSION
+            await createAdminSession(data.user)
 
             console.log('✅ Authentification réussie et accès autorisé pour:', data.user.email)
 
