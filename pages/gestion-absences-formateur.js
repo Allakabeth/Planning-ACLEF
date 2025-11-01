@@ -6,6 +6,9 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
 
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États
     const [formateurs, setFormateurs] = useState([])
     const [formateurSelectionne, setFormateurSelectionne] = useState('')
@@ -15,6 +18,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     const [isLoading, setIsLoading] = useState(false)
     const [message, setMessage] = useState('')
     const [stats, setStats] = useState({})
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
 
     useEffect(() => {
         chargerFormateurs()
@@ -32,6 +36,68 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             chargerPresences()
         }
     }, [formateurSelectionne, dateDebut, dateFin])
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        fetchConnectedAdmins();
+
+        const channel = supabase
+            .channel('admin_sessions_changes_gestion_absences_formateur')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
+
+    // 🔄 Recharger les données quand la priorité change
+    useEffect(() => {
+        console.log('🔄 Priorité changée, rechargement absences...');
+        if (formateurSelectionne && dateDebut && dateFin) {
+            chargerPresences();
+        }
+    }, [priority]);
+
+    // 👂 Écoute en temps réel des modifications des absences formateurs
+    useEffect(() => {
+        if (!user) return;
+
+        const channel = supabase
+            .channel('absences_formateurs_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'presences_formateurs'
+            }, (payload) => {
+                console.log('🔄 Modification absences formateurs détectée, refresh...');
+                if (formateurSelectionne && dateDebut && dateFin) {
+                    chargerPresences();
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, formateurSelectionne, dateDebut, dateFin]);
 
     const chargerFormateurs = async () => {
         try {
@@ -108,6 +174,41 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             lieuxStats
         })
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false});
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setConnectedAdmins([]);
+                return;
+            }
+
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email)
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     const exporterExcel = async () => {
         if (!formateurSelectionne || presences.length === 0) {
@@ -346,7 +447,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                     marginBottom: '20px',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    gap: '15px'
                 }}>
                     {priority && priority < 999 && (
                         <div style={{
@@ -363,6 +465,64 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                             boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
                         }}>
                             {priority}
+                        </div>
+                    )}
+
+                    {/* Séparateur */}
+                    {priority && priority < 999 && connectedAdmins.length > 0 && (
+                        <div style={{
+                            width: '1px',
+                            height: '32px',
+                            backgroundColor: '#e5e7eb'
+                        }} />
+                    )}
+
+                    {/* Liste des admins connectés */}
+                    {connectedAdmins.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            gap: '10px',
+                            alignItems: 'center',
+                            flexWrap: 'wrap'
+                        }}>
+                            {connectedAdmins.map((admin, index) => {
+                                const isOnThisPage = admin.currentPage === 'gestion-absences-formateur';
+                                const verb = isOnThisPage ? (admin.priority === 1 ? 'modifie' : 'consulte') : 'autre page';
+
+                                return (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 10px',
+                                        borderRadius: '12px',
+                                        backgroundColor: isOnThisPage ? '#f0fdf4' : '#f9fafb',
+                                        border: `1px solid ${isOnThisPage ? '#86efac' : '#e5e7eb'}`
+                                    }}>
+                                        <div style={{
+                                            width: '20px',
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
+                                            color: 'white',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '11px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {admin.priority}
+                                        </div>
+                                        <span style={{
+                                            fontSize: '13px',
+                                            color: isOnThisPage ? '#059669' : '#6b7280',
+                                            fontWeight: isOnThisPage ? '600' : '400'
+                                        }}>
+                                            {admin.name} {verb}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -481,16 +641,18 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
                         <button
                             onClick={chargerPresences}
-                            disabled={!formateurSelectionne || !dateDebut || !dateFin || isLoading}
+                            disabled={!formateurSelectionne || !dateDebut || !dateFin || isLoading || !canEdit}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                             style={{
-                                backgroundColor: formateurSelectionne && dateDebut && dateFin ? '#3b82f6' : '#9ca3af',
+                                backgroundColor: !canEdit ? '#94a3b8' : (formateurSelectionne && dateDebut && dateFin ? '#3b82f6' : '#9ca3af'),
                                 color: 'white',
                                 padding: '10px 20px',
                                 borderRadius: '8px',
                                 border: 'none',
-                                cursor: formateurSelectionne && dateDebut && dateFin ? 'pointer' : 'not-allowed',
+                                cursor: !canEdit ? 'not-allowed' : (formateurSelectionne && dateDebut && dateFin ? 'pointer' : 'not-allowed'),
                                 fontSize: '14px',
-                                fontWeight: 'bold'
+                                fontWeight: 'bold',
+                                opacity: !canEdit ? 0.6 : 1
                             }}
                         >
                             {isLoading ? 'Chargement...' : 'Charger'}
@@ -627,18 +789,21 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                     }}>
                         <button
                             onClick={exporterExcel}
+                            disabled={!canEdit}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                             style={{
-                                backgroundColor: '#059669',
+                                backgroundColor: !canEdit ? '#94a3b8' : '#059669',
                                 color: 'white',
                                 padding: '12px 24px',
                                 borderRadius: '8px',
                                 border: 'none',
-                                cursor: 'pointer',
+                                cursor: !canEdit ? 'not-allowed' : 'pointer',
                                 fontSize: '14px',
                                 fontWeight: 'bold',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px'
+                                gap: '8px',
+                                opacity: !canEdit ? 0.6 : 1
                             }}
                         >
                             📊 Exporter CSV
@@ -646,18 +811,21 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
                         <button
                             onClick={exporterPDF}
+                            disabled={!canEdit}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                             style={{
-                                backgroundColor: '#dc2626',
+                                backgroundColor: !canEdit ? '#94a3b8' : '#dc2626',
                                 color: 'white',
                                 padding: '12px 24px',
                                 borderRadius: '8px',
                                 border: 'none',
-                                cursor: 'pointer',
+                                cursor: !canEdit ? 'not-allowed' : 'pointer',
                                 fontSize: '14px',
                                 fontWeight: 'bold',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '8px'
+                                gap: '8px',
+                                opacity: !canEdit ? 0.6 : 1
                             }}
                         >
                             📄 Exporter PDF

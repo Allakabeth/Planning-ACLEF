@@ -5,7 +5,10 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 
 function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
-    
+
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États principaux
     const [apprenants, setApprenants] = useState([])
     const [apprenantSelectionne, setApprenantSelectionne] = useState(null)
@@ -13,6 +16,7 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const [planningType, setPlanningType] = useState({})
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState(null)
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
 
     // Constantes
     const jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
@@ -34,6 +38,67 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
             }
         }
     }, [apprenants, router.query.apprenant])
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        fetchConnectedAdmins();
+
+        const channel = supabase
+            .channel('admin_sessions_changes_planning_type_apprenants')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
+
+    // 🔄 Recharger les données quand la priorité change
+    useEffect(() => {
+        if (apprenantSelectionne) {
+            console.log('🔄 Priorité changée, rechargement planning...');
+            fetchPlanningType(apprenantSelectionne.id);
+        }
+    }, [priority]);
+
+    // 👂 Écoute en temps réel des modifications du planning
+    useEffect(() => {
+        if (!user || !apprenantSelectionne) return;
+
+        const channel = supabase
+            .channel('planning_apprenants_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'planning_apprenants',
+                filter: `apprenant_id=eq.${apprenantSelectionne.id}`
+            }, (payload) => {
+                console.log('🔄 Modification planning_apprenants détectée, refresh...');
+                fetchPlanningType(apprenantSelectionne.id);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, apprenantSelectionne])
 
     // Fonction pour récupérer les apprenants
     const fetchApprenants = async () => {
@@ -89,6 +154,41 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
             })
         }
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false});
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setConnectedAdmins([]);
+                return;
+            }
+
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email)
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     // Fonction pour charger le planning existant d'un apprenant
     const fetchPlanningType = async (apprenantId) => {
@@ -228,7 +328,10 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
 
         return (
             <td className="case-planning">
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                <div
+                    style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                >
                     <select
                         value={currentValue?.lieu_id || ''}
                         onChange={(e) => handleCaseChange(key, e.target.value)}
@@ -236,9 +339,11 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                         style={{
                             backgroundColor: currentValue?.lieu_couleur || 'rgba(255, 255, 255, 0.9)',
                             color: currentValue?.lieu_couleur ? 'white' : '#374151',
-                            fontWeight: currentValue?.lieu_couleur ? 'bold' : 'normal'
+                            fontWeight: currentValue?.lieu_couleur ? 'bold' : 'normal',
+                            opacity: (!apprenantSelectionne || !canEdit) ? 0.5 : 1,
+                            cursor: (!apprenantSelectionne || !canEdit) ? 'not-allowed' : 'pointer'
                         }}
-                        disabled={!apprenantSelectionne}
+                        disabled={!apprenantSelectionne || !canEdit}
                     >
                         <option value="">--</option>
                         {lieux.map(lieu => (
@@ -558,7 +663,8 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                     marginBottom: '20px',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                     display: 'flex',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    gap: '15px'
                 }}>
                     {priority && priority < 999 && (
                         <div style={{
@@ -576,6 +682,62 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                         }}>
                             {priority}
                         </div>
+                    )}
+
+                    {/* Liste des autres admins connectés */}
+                    {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+                        <>
+                            <div style={{
+                                width: '1px',
+                                height: '24px',
+                                backgroundColor: '#e5e7eb'
+                            }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                <span style={{
+                                    color: '#9ca3af',
+                                    fontSize: '12px',
+                                    fontWeight: '600'
+                                }}>
+                                    👥
+                                </span>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: '#f9fafb',
+                                            borderRadius: '6px',
+                                            border: '1px solid #e5e7eb',
+                                            fontSize: '13px'
+                                        }}>
+                                            <div style={{
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                backgroundColor: '#10b981',
+                                                flexShrink: 0
+                                            }} />
+                                            <span style={{ color: '#374151', fontWeight: '500' }}>
+                                                {admin.name}
+                                            </span>
+                                            {admin.currentPage && admin.currentPage !== '/' && (
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    color: '#6b7280',
+                                                    backgroundColor: '#f3f4f6',
+                                                    padding: '1px 4px',
+                                                    borderRadius: '3px'
+                                                }}>
+                                                    {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
 
@@ -652,14 +814,20 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
 
                     {/* Actions et statistiques */}
                     <div className="actions-section">
-                        <button 
+                        <button
                             onClick={sauvegarderPlanning}
-                            disabled={!apprenantSelectionne || loading}
+                            disabled={!apprenantSelectionne || loading || !canEdit}
                             className="btn-sauvegarder"
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                            style={{
+                                opacity: (!apprenantSelectionne || loading || !canEdit) ? 0.5 : 1,
+                                background: (!apprenantSelectionne || loading || !canEdit) ? '#94a3b8' : 'linear-gradient(135deg, #4CAF50, #45a049)',
+                                cursor: (!apprenantSelectionne || loading || !canEdit) ? 'not-allowed' : 'pointer'
+                            }}
                         >
                             {loading ? 'Sauvegarde...' : 'Sauvegarder Planning'}
                         </button>
-                        
+
                         {apprenantSelectionne && (
                             <div className="stats-planning">
                                 {nbCreneaux} créneau(s) défini(s) pour {apprenantSelectionne.prenom} {apprenantSelectionne.nom}

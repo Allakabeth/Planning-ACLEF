@@ -5,23 +5,27 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 
 function GestionLieux({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
-    
+
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États
     const [lieux, setLieux] = useState([])
     const [filtreStatut, setFiltreStatut] = useState('actif')
     const [isLoading, setIsLoading] = useState(false)
     const [message, setMessage] = useState('')
-    
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
+
     // États formulaire ajout
     const [showAjouterForm, setShowAjouterForm] = useState(false)
     const [nom, setNom] = useState('')
     const [initiale, setInitiale] = useState('')
     const [couleur, setCouleur] = useState('#3b82f6')
-    
+
     // États formulaire modification
     const [lieuEnModification, setLieuEnModification] = useState(null)
     const [showModifierForm, setShowModifierForm] = useState(false)
-    
+
     // États pour confirmation
     const [showConfirmation, setShowConfirmation] = useState(false)
     const [actionEnCours, setActionEnCours] = useState(null)
@@ -57,7 +61,7 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
         if (nom) {
             const words = nom.split(' ')
             let initialeAuto = ''
-            
+
             if (words.length >= 2) {
                 // Si plusieurs mots, prendre la première lettre de chaque (max 3)
                 initialeAuto = words.slice(0, 3).map(w => w.charAt(0)).join('').toUpperCase()
@@ -65,10 +69,68 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                 // Si un seul mot, prendre les 3 premières lettres
                 initialeAuto = nom.substring(0, 3).toUpperCase()
             }
-            
+
             setInitiale(initialeAuto)
         }
     }, [nom])
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        fetchConnectedAdmins();
+
+        const channel = supabase
+            .channel('admin_sessions_changes_gestion_lieux')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
+
+    // 🔄 Recharger les données quand la priorité change
+    useEffect(() => {
+        console.log('🔄 Priorité changée, rechargement lieux...');
+        fetchLieux();
+    }, [priority]);
+
+    // 👂 Écoute en temps réel des modifications des lieux
+    useEffect(() => {
+        if (!user) return;
+
+        const channel = supabase
+            .channel('lieux_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'lieux'
+            }, (payload) => {
+                console.log('🔄 Modification lieux détectée, refresh...');
+                fetchLieux();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, filtreStatut])
 
     // Fonction pour récupérer les lieux
     const fetchLieux = async () => {
@@ -81,7 +143,7 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
             if (error) throw error
 
             let lieuxFiltres = data || []
-            
+
             if (filtreStatut === 'actif') {
                 lieuxFiltres = data.filter(l => l.archive !== true)
             } else if (filtreStatut === 'archive') {
@@ -94,6 +156,41 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
             console.error(error)
         }
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false});
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setConnectedAdmins([]);
+                return;
+            }
+
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email)
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     // Fonction pour ajouter un lieu
     const handleSubmitAjout = async (e) => {
@@ -304,7 +401,8 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                 marginBottom: '20px',
                 boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '15px'
             }}>
                 {priority && priority < 999 && (
                     <div style={{
@@ -322,6 +420,69 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                     }}>
                         {priority}
                     </div>
+                )}
+
+                {connectedAdmins.length > 0 && (
+                    <>
+                        <div style={{
+                            width: '1px',
+                            height: '30px',
+                            backgroundColor: '#e5e7eb'
+                        }} />
+
+                        <div style={{
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'center',
+                            flex: 1
+                        }}>
+                            {connectedAdmins.map((admin, index) => {
+                                const isOnThisPage = admin.currentPage === 'Gestion Lieux';
+                                const verb = admin.priority === 1 ? 'modifie' : 'consulte';
+
+                                return (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        backgroundColor: isOnThisPage ? '#f0f9ff' : 'transparent'
+                                    }}>
+                                        <div style={{
+                                            width: '24px',
+                                            height: '24px',
+                                            borderRadius: '50%',
+                                            backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
+                                            color: 'white',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '11px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {admin.priority}
+                                        </div>
+                                        <div style={{ fontSize: '13px' }}>
+                                            <span style={{ fontWeight: '500', color: '#1f2937' }}>
+                                                {admin.name}
+                                            </span>
+                                            {isOnThisPage && (
+                                                <span style={{ color: '#6b7280', marginLeft: '4px' }}>
+                                                    {verb}
+                                                </span>
+                                            )}
+                                            {!isOnThisPage && admin.currentPage && (
+                                                <span style={{ color: '#9ca3af', marginLeft: '4px', fontSize: '12px' }}>
+                                                    ({admin.currentPage})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -362,20 +523,23 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                         setShowAjouterForm(!showAjouterForm)
                         setShowModifierForm(false)
                     }}
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                         width: '100%',
                         padding: '15px',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        background: !canEdit ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                         color: 'white',
                         border: 'none',
                         borderRadius: '12px',
                         fontSize: '16px',
                         fontWeight: '600',
-                        cursor: 'pointer',
+                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                        opacity: !canEdit ? 0.6 : 1,
                         transition: 'transform 0.2s'
                     }}
-                    onMouseOver={(e) => e.target.style.transform = 'scale(1.02)'}
-                    onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+                    onMouseOver={(e) => { if (canEdit) e.target.style.transform = 'scale(1.02)' }}
+                    onMouseOut={(e) => { if (canEdit) e.target.style.transform = 'scale(1)' }}
                 >
                     📍 Ajouter un nouveau lieu
                 </button>
@@ -508,14 +672,16 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: isLoading ? '#9ca3af' : '#10b981',
+                                    backgroundColor: (isLoading || !canEdit) ? '#9ca3af' : '#10b981',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -694,14 +860,16 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: isLoading ? '#9ca3af' : '#f59e0b',
+                                    backgroundColor: (isLoading || !canEdit) ? '#9ca3af' : '#f59e0b',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -855,28 +1023,34 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                 <button
                                                     onClick={() => initierAction(lieu, 'desarchiver')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#10b981',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#10b981',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     📤 Désarchiver
                                                 </button>
                                                 <button
                                                     onClick={() => initierAction(lieu, 'supprimer')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#ef4444',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#ef4444',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     🗑️ Supprimer
@@ -886,28 +1060,34 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                 <button
                                                     onClick={() => initierModification(lieu)}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#3b82f6',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#3b82f6',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     🎨 Modifier
                                                 </button>
                                                 <button
                                                     onClick={() => initierAction(lieu, 'archiver')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#6b7280',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#6b7280',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     📦 Archiver
@@ -961,16 +1141,18 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 onClick={executerAction}
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     flex: 1,
                                     padding: '10px',
-                                    backgroundColor: actionEnCours.type === 'supprimer' ? '#ef4444' : '#3b82f6',
+                                    backgroundColor: (isLoading || !canEdit) ? '#9ca3af' : (actionEnCours.type === 'supprimer' ? '#ef4444' : '#3b82f6'),
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontWeight: '500',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer'
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1
                                 }}
                             >
                                 {isLoading ? 'En cours...' : 'Confirmer'}

@@ -169,6 +169,11 @@ const SkeletonAbsenceLoader = () => {
 };
 
 function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
+  const router = useRouter();
+
+  // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+  const canEdit = priority === 1;
+
   const [loading, setLoading] = useState(true);
   const [apprenants, setApprenants] = useState([]);
   const [lieux, setLieux] = useState([]);
@@ -176,6 +181,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [filtreNom, setFiltreNom] = useState(''); // Filtre par nom d'apprenant
+  const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
 
   // État du formulaire
   const [formData, setFormData] = useState({
@@ -189,11 +195,67 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     motif: ''
   });
 
-  const router = useRouter();
-
   useEffect(() => {
     loadData();
   }, []);
+
+  // 👥 Charger et écouter les admins connectés en temps réel
+  useEffect(() => {
+    if (!user) return;
+
+    fetchConnectedAdmins();
+
+    const channel = supabase
+      .channel('admin_sessions_changes_absence_apprenant')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'admin_sessions'
+        },
+        () => {
+          fetchConnectedAdmins();
+        }
+      )
+      .subscribe();
+
+    const refreshInterval = setInterval(() => {
+      fetchConnectedAdmins();
+    }, 30000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(refreshInterval);
+    };
+  }, [user]);
+
+  // 🔄 Recharger les données quand la priorité change
+  useEffect(() => {
+    console.log('🔄 Priorité changée, rechargement absences...');
+    loadAbsences();
+  }, [priority]);
+
+  // 👂 Écoute en temps réel des modifications des absences apprenants
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('absences_apprenants_changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'absences_apprenants'
+      }, (payload) => {
+        console.log('🔄 Modification absences apprenants détectée, refresh...');
+        loadAbsences();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const loadData = async () => {
     try {
@@ -240,6 +302,41 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     } catch (error) {
       console.error('Erreur chargement absences:', error);
       setError('Erreur lors du chargement des absences');
+    }
+  };
+
+  // Fonction pour récupérer la liste des admins connectés
+  const fetchConnectedAdmins = async () => {
+    try {
+      const { data: sessions, error: sessionsError } = await supabase
+        .from('admin_sessions')
+        .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+        .eq('is_active', true)
+        .order('heartbeat', { ascending: false});
+
+      if (sessionsError) {
+        console.error('❌ Erreur récupération sessions:', sessionsError);
+        return;
+      }
+
+      if (!sessions || sessions.length === 0) {
+        setConnectedAdmins([]);
+        return;
+      }
+
+      const adminsFormatted = sessions
+        .filter(session => session.admin_email)
+        .map(session => ({
+          email: session.admin_email,
+          name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+          currentPage: session.current_page,
+          priority: session.page_priority,
+          lastActive: session.heartbeat
+        }));
+
+      setConnectedAdmins(adminsFormatted);
+    } catch (error) {
+      console.error('❌ Erreur fetchConnectedAdmins:', error);
     }
   };
 
@@ -394,7 +491,8 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
         marginBottom: '20px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        gap: '15px'
       }}>
         {priority && priority < 999 && (
           <div style={{
@@ -411,6 +509,51 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
           }}>
             {priority}
+          </div>
+        )}
+
+        {/* Séparateur */}
+        {priority && priority < 999 && connectedAdmins.length > 0 && (
+          <div style={{
+            width: '1px',
+            height: '24px',
+            backgroundColor: '#e5e7eb'
+          }}></div>
+        )}
+
+        {/* Liste des admins connectés */}
+        {connectedAdmins.length > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flex: 1
+          }}>
+            {connectedAdmins.map((admin, index) => (
+              <div key={index} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 12px',
+                backgroundColor: admin.priority === 1 ? '#d1fae5' : admin.priority === 2 ? '#fef3c7' : '#fee2e2',
+                borderRadius: '12px',
+                fontSize: '13px',
+                color: '#1f2937'
+              }}>
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626'
+                }}></div>
+                <span style={{ fontWeight: '500' }}>{admin.name}</span>
+                <span style={{ color: '#6b7280' }}>
+                  {admin.currentPage === '/absence-apprenant'
+                    ? (admin.priority === 1 ? 'modifie' : 'consulte')
+                    : `sur ${admin.currentPage}`}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -487,12 +630,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                 value={formData.type}
                 onChange={handleInputChange}
                 required
+                disabled={!canEdit}
+                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                 style={{
                   width: '100%',
                   padding: '10px',
                   borderRadius: '6px',
                   border: '1px solid #ddd',
-                  fontSize: '16px'
+                  fontSize: '16px',
+                  cursor: !canEdit ? 'not-allowed' : 'pointer',
+                  opacity: !canEdit ? 0.6 : 1
                 }}
               >
                 <option value="absence_periode">🗓️ Absence par période</option>
@@ -511,12 +658,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                 value={formData.apprenant_id}
                 onChange={handleInputChange}
                 required
+                disabled={!canEdit}
+                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                 style={{
                   width: '100%',
                   padding: '10px',
                   borderRadius: '6px',
                   border: '1px solid #ddd',
-                  fontSize: '16px'
+                  fontSize: '16px',
+                  cursor: !canEdit ? 'not-allowed' : 'pointer',
+                  opacity: !canEdit ? 0.6 : 1
                 }}
               >
                 <option value="">Sélectionner un apprenant</option>
@@ -539,12 +690,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                   value={formData.lieu_id}
                   onChange={handleInputChange}
                   required
+                  disabled={!canEdit}
+                  title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                   style={{
                     width: '100%',
                     padding: '10px',
                     borderRadius: '6px',
                     border: '1px solid #ddd',
-                    fontSize: '16px'
+                    fontSize: '16px',
+                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                    opacity: !canEdit ? 0.6 : 1
                   }}
                 >
                   <option value="">Sélectionner un lieu</option>
@@ -572,12 +727,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     value={formData.date_debut}
                     onChange={handleInputChange}
                     required
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                       width: '100%',
                       padding: '10px',
                       borderRadius: '6px',
                       border: '1px solid #ddd',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      cursor: !canEdit ? 'not-allowed' : 'text',
+                      opacity: !canEdit ? 0.6 : 1
                     }}
                   />
                 </div>
@@ -591,12 +750,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     value={formData.date_fin}
                     onChange={handleInputChange}
                     required
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                       width: '100%',
                       padding: '10px',
                       borderRadius: '6px',
                       border: '1px solid #ddd',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      cursor: !canEdit ? 'not-allowed' : 'text',
+                      opacity: !canEdit ? 0.6 : 1
                     }}
                   />
                 </div>
@@ -613,12 +776,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     value={formData.date_specifique}
                     onChange={handleInputChange}
                     required
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                       width: '100%',
                       padding: '10px',
                       borderRadius: '6px',
                       border: '1px solid #ddd',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      cursor: !canEdit ? 'not-allowed' : 'text',
+                      opacity: !canEdit ? 0.6 : 1
                     }}
                   />
                 </div>
@@ -631,12 +798,16 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     value={formData.creneau}
                     onChange={handleInputChange}
                     required
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                       width: '100%',
                       padding: '10px',
                       borderRadius: '6px',
                       border: '1px solid #ddd',
-                      fontSize: '16px'
+                      fontSize: '16px',
+                      cursor: !canEdit ? 'not-allowed' : 'pointer',
+                      opacity: !canEdit ? 0.6 : 1
                     }}
                   >
                     <option value="">Sélectionner</option>
@@ -658,13 +829,17 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
               value={formData.motif}
               onChange={handleInputChange}
               rows="3"
+              disabled={!canEdit}
+              title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
               style={{
                 width: '100%',
                 padding: '10px',
                 borderRadius: '6px',
                 border: '1px solid #ddd',
                 fontSize: '16px',
-                resize: 'vertical'
+                resize: 'vertical',
+                cursor: !canEdit ? 'not-allowed' : 'text',
+                opacity: !canEdit ? 0.6 : 1
               }}
               placeholder="Motif de l'absence ou présence exceptionnelle..."
             />
@@ -672,15 +847,18 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
 
           <button
             type="submit"
+            disabled={!canEdit}
+            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
             style={{
-              backgroundColor: '#4CAF50',
+              background: !canEdit ? '#94a3b8' : '#4CAF50',
               color: 'white',
               border: 'none',
               padding: '12px 24px',
               borderRadius: '6px',
               fontSize: '16px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
+              cursor: !canEdit ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              opacity: !canEdit ? 0.6 : 1
             }}
           >
             💾 Enregistrer
@@ -798,14 +976,17 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
                         onClick={() => handleDelete(absence.id)}
+                        disabled={!canEdit}
+                        title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         style={{
-                          backgroundColor: '#ff4757',
+                          background: !canEdit ? '#94a3b8' : '#ff4757',
                           color: 'white',
                           border: 'none',
                           padding: '6px 12px',
                           borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '12px'
+                          cursor: !canEdit ? 'not-allowed' : 'pointer',
+                          fontSize: '12px',
+                          opacity: !canEdit ? 0.6 : 1
                         }}
                       >
                         🗑️ Supprimer

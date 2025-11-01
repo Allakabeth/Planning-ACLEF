@@ -5,12 +5,16 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 
 function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
-    
+
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États
     const [formateurs, setFormateurs] = useState([])
     const [filtreStatut, setFiltreStatut] = useState('actif')
     const [isLoading, setIsLoading] = useState(false)
     const [message, setMessage] = useState('')
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     
     // États formulaire ajout
     const [showAjouterForm, setShowAjouterForm] = useState(false)
@@ -28,6 +32,65 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     useEffect(() => {
         fetchFormateurs()
     }, [filtreStatut])
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        fetchConnectedAdmins();
+
+        const channel = supabase
+            .channel('admin_sessions_changes_gestion_formateurs')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
+
+    // 🔄 Recharger les données quand la priorité change
+    useEffect(() => {
+        console.log('🔄 Priorité changée, rechargement formateurs...');
+        fetchFormateurs();
+    }, [priority]);
+
+    // 👂 Écoute en temps réel des modifications des formateurs
+    useEffect(() => {
+        if (!user) return;
+
+        const channel = supabase
+            .channel('users_formateurs_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'users',
+                filter: `role=eq.formateur`
+            }, (payload) => {
+                console.log('🔄 Modification users (formateurs) détectée, refresh...');
+                fetchFormateurs();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, filtreStatut]);
 
     // Fonction pour récupérer les formateurs
     const fetchFormateurs = async () => {
@@ -54,6 +117,41 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
             console.error(error)
         }
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false});
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setConnectedAdmins([]);
+                return;
+            }
+
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email)
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     /**
      * Normalise un prénom/nom pour créer un email valide
@@ -301,7 +399,8 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                 marginBottom: '20px',
                 boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '15px'
             }}>
                 {priority && priority < 999 && (
                     <div style={{
@@ -319,6 +418,62 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                     }}>
                         {priority}
                     </div>
+                )}
+
+                {/* Liste des autres admins connectés */}
+                {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+                    <>
+                        <div style={{
+                            width: '1px',
+                            height: '24px',
+                            backgroundColor: '#e5e7eb'
+                        }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 8px',
+                                        backgroundColor: '#f9fafb',
+                                        borderRadius: '6px',
+                                        border: '1px solid #e5e7eb',
+                                        fontSize: '13px'
+                                    }}>
+                                        <div style={{
+                                            width: '6px',
+                                            height: '6px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#10b981',
+                                            flexShrink: 0
+                                        }} />
+                                        <span style={{ color: '#374151', fontWeight: '500' }}>
+                                            {admin.name}
+                                        </span>
+                                        {admin.currentPage && admin.currentPage !== '/' && (
+                                            <span style={{
+                                                fontSize: '11px',
+                                                color: '#6b7280',
+                                                backgroundColor: '#f3f4f6',
+                                                padding: '1px 4px',
+                                                borderRadius: '3px'
+                                            }}>
+                                                {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -360,20 +515,27 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                         setShowAjouterForm(!showAjouterForm)
                         setShowModifierForm(false)
                     }}
+                    disabled={!canEdit}
+                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                     style={{
                         width: '100%',
                         padding: '15px',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        background: !canEdit ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                         color: 'white',
                         border: 'none',
                         borderRadius: '12px',
                         fontSize: '16px',
                         fontWeight: '600',
-                        cursor: 'pointer',
+                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                        opacity: !canEdit ? 0.6 : 1,
                         transition: 'transform 0.2s'
                     }}
-                    onMouseOver={(e) => e.target.style.transform = 'scale(1.02)'}
-                    onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+                    onMouseOver={(e) => {
+                        if (canEdit) e.target.style.transform = 'scale(1.02)'
+                    }}
+                    onMouseOut={(e) => {
+                        if (canEdit) e.target.style.transform = 'scale(1)'
+                    }}
                 >
                     Ajouter un nouveau formateur
                 </button>
@@ -456,14 +618,16 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: isLoading ? '#9ca3af' : '#10b981',
+                                    backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#10b981',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: (isLoading || !canEdit) ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -476,13 +640,16 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     setPrenom('')
                                     setNom('')
                                 }}
+                                disabled={!canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: '#6b7280',
+                                    backgroundColor: !canEdit ? '#94a3b8' : '#6b7280',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: 'pointer',
+                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -575,14 +742,16 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: isLoading ? '#9ca3af' : '#f59e0b',
+                                    backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#f59e0b',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: (isLoading || !canEdit) ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -594,13 +763,16 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     setShowModifierForm(false)
                                     setFormateurEnModification(null)
                                 }}
+                                disabled={!canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: '#6b7280',
+                                    backgroundColor: !canEdit ? '#94a3b8' : '#6b7280',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
-                                    cursor: 'pointer',
+                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1,
                                     fontWeight: '500'
                                 }}
                             >
@@ -729,28 +901,34 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                 <button
                                                     onClick={() => initierAction(formateur, 'desarchiver')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#10b981',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#10b981',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     Désarchiver
                                                 </button>
                                                 <button
                                                     onClick={() => initierAction(formateur, 'supprimer')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#ef4444',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#ef4444',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     Supprimer
@@ -760,28 +938,34 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                 <button
                                                     onClick={() => initierModification(formateur)}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#3b82f6',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#3b82f6',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     Modifier
                                                 </button>
                                                 <button
                                                     onClick={() => initierAction(formateur, 'archiver')}
+                                                    disabled={!canEdit}
+                                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                                     style={{
                                                         padding: '6px 12px',
-                                                        backgroundColor: '#6b7280',
+                                                        backgroundColor: !canEdit ? '#94a3b8' : '#6b7280',
                                                         color: 'white',
                                                         border: 'none',
                                                         borderRadius: '6px',
                                                         fontSize: '12px',
-                                                        cursor: 'pointer'
+                                                        cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                        opacity: !canEdit ? 0.6 : 1
                                                     }}
                                                 >
                                                     Archiver
@@ -835,16 +1019,18 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 onClick={executerAction}
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     flex: 1,
                                     padding: '10px',
-                                    backgroundColor: actionEnCours.type === 'supprimer' ? '#ef4444' : '#3b82f6',
+                                    backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : (actionEnCours.type === 'supprimer' ? '#ef4444' : '#3b82f6'),
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontWeight: '500',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer'
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: (isLoading || !canEdit) ? 0.6 : 1
                                 }}
                             >
                                 {isLoading ? 'En cours...' : 'Confirmer'}
@@ -854,16 +1040,18 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     setShowConfirmation(false)
                                     setActionEnCours(null)
                                 }}
-                                disabled={isLoading}
+                                disabled={isLoading || !canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     flex: 1,
                                     padding: '10px',
-                                    backgroundColor: '#6b7280',
+                                    backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#6b7280',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontWeight: '500',
-                                    cursor: isLoading ? 'not-allowed' : 'pointer'
+                                    cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                    opacity: (isLoading || !canEdit) ? 0.6 : 1
                                 }}
                             >
                                 Annuler

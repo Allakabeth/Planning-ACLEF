@@ -5,7 +5,10 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 
 function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
-    
+
+    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
+    const canEdit = priority === 1;
+
     // États
     const [formateurs, setFormateurs] = useState([])
     const [lieux, setLieux] = useState([])
@@ -13,6 +16,7 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
     const [isLoading, setIsLoading] = useState(false)
     const [message, setMessage] = useState('')
     const [planningData, setPlanningData] = useState({})
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     
     // Configuration des jours et créneaux - ✅ AM au lieu d'Après-midi
     const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
@@ -44,6 +48,67 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
             }
         }
     }, [formateurs])
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        fetchConnectedAdmins();
+
+        const channel = supabase
+            .channel('admin_sessions_changes_planning_type_formateurs')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
+
+    // 🔄 Recharger les données quand la priorité change
+    useEffect(() => {
+        if (formateurSelectionne && formateurs.length > 0) {
+            console.log('🔄 Priorité changée, rechargement planning...');
+            loadPlanningFormateur(formateurSelectionne);
+        }
+    }, [priority]);
+
+    // 👂 Écoute en temps réel des modifications du planning
+    useEffect(() => {
+        if (!user || !formateurSelectionne) return;
+
+        const channel = supabase
+            .channel('planning_type_formateurs_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'planning_type_formateurs',
+                filter: `formateur_id=eq.${formateurSelectionne}`
+            }, (payload) => {
+                console.log('🔄 Modification planning_type_formateurs détectée, refresh...');
+                loadPlanningFormateur(formateurSelectionne);
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, formateurSelectionne]);
 
     const loadFormateurs = async () => {
         try {
@@ -114,6 +179,41 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
         
         setIsLoading(false)
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false});
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setConnectedAdmins([]);
+                return;
+            }
+
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email)
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     const loadPlanningFormateur = async (formateurId) => {
         try {
@@ -422,7 +522,8 @@ L'équipe de coordination ACLEF`,
                 marginBottom: '20px',
                 boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '15px'
             }}>
                 {priority && priority < 999 && (
                     <div style={{
@@ -440,6 +541,62 @@ L'équipe de coordination ACLEF`,
                     }}>
                         {priority}
                     </div>
+                )}
+
+                {/* Liste des autres admins connectés */}
+                {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+                    <>
+                        <div style={{
+                            width: '1px',
+                            height: '24px',
+                            backgroundColor: '#e5e7eb'
+                        }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
+                                    <div key={index} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 8px',
+                                        backgroundColor: '#f9fafb',
+                                        borderRadius: '6px',
+                                        border: '1px solid #e5e7eb',
+                                        fontSize: '13px'
+                                    }}>
+                                        <div style={{
+                                            width: '6px',
+                                            height: '6px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#10b981',
+                                            flexShrink: 0
+                                        }} />
+                                        <span style={{ color: '#374151', fontWeight: '500' }}>
+                                            {admin.name}
+                                        </span>
+                                        {admin.currentPage && admin.currentPage !== '/' && (
+                                            <span style={{
+                                                fontSize: '11px',
+                                                color: '#6b7280',
+                                                backgroundColor: '#f3f4f6',
+                                                padding: '1px 4px',
+                                                borderRadius: '3px'
+                                            }}>
+                                                {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -515,21 +672,23 @@ L'équipe de coordination ACLEF`,
                     {formateurSelectionne && (
                         <button
                             onClick={handleValiderTransmettre}
-                            disabled={isLoading}
+                            disabled={isLoading || !canEdit}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                             style={{
                                 padding: '12px 24px',
-                                background: isLoading ? '#9ca3af' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                background: (isLoading || !canEdit) ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '8px',
                                 fontSize: '16px',
                                 fontWeight: '600',
-                                cursor: isLoading ? 'not-allowed' : 'pointer',
-                                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                                transition: 'transform 0.2s'
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer',
+                                boxShadow: (isLoading || !canEdit) ? 'none' : '0 4px 12px rgba(16, 185, 129, 0.3)',
+                                transition: 'transform 0.2s',
+                                opacity: (isLoading || !canEdit) ? 0.6 : 1
                             }}
-                            onMouseOver={(e) => !isLoading && (e.target.style.transform = 'translateY(-2px)')}
-                            onMouseOut={(e) => !isLoading && (e.target.style.transform = 'translateY(0)')}
+                            onMouseOver={(e) => !isLoading && canEdit && (e.target.style.transform = 'translateY(-2px)')}
+                            onMouseOut={(e) => !isLoading && canEdit && (e.target.style.transform = 'translateY(0)')}
                         >
                             {isLoading ? 'SAUVEGARDE...' : 'VALIDER & TRANSMETTRE'}
                         </button>
@@ -718,27 +877,31 @@ L'équipe de coordination ACLEF`,
                                                             ) : null}
                                                             
                                                             {/* Checkbox validation */}
-                                                            <label style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '6px',
-                                                                fontSize: '12px',
-                                                                cursor: 'pointer',
-                                                                padding: '4px',
-                                                                borderRadius: '4px',
-                                                                backgroundColor: cellData.valide ? '#d1fae5' : '#f3f4f6'
+                                                            <label
+                                                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    fontSize: '12px',
+                                                                    cursor: canEdit ? 'pointer' : 'not-allowed',
+                                                                    padding: '4px',
+                                                                    borderRadius: '4px',
+                                                                    backgroundColor: cellData.valide ? '#d1fae5' : '#f3f4f6',
+                                                                    opacity: canEdit ? 1 : 0.5
                                                             }}>
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={cellData.valide}
                                                                     onChange={() => toggleValidation(dayIndex, creneau)}
-                                                                    style={{ 
-                                                                        width: '16px', 
+                                                                    disabled={!canEdit}
+                                                                    style={{
+                                                                        width: '16px',
                                                                         height: '16px',
-                                                                        cursor: 'pointer'
+                                                                        cursor: canEdit ? 'pointer' : 'not-allowed'
                                                                     }}
                                                                 />
-                                                                <span style={{ 
+                                                                <span style={{
                                                                     fontWeight: '600',
                                                                     color: cellData.valide ? '#065f46' : '#6b7280'
                                                                 }}>
@@ -783,30 +946,36 @@ L'équipe de coordination ACLEF`,
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button
                                 onClick={devaliderTout}
+                                disabled={!canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: '#6b7280',
+                                    backgroundColor: !canEdit ? '#94a3b8' : '#6b7280',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontSize: '14px',
                                     fontWeight: '500',
-                                    cursor: 'pointer'
+                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1
                                 }}
                             >
                                 Tout dévalider
                             </button>
                             <button
                                 onClick={validerTout}
+                                disabled={!canEdit}
+                                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                                 style={{
                                     padding: '10px 20px',
-                                    backgroundColor: '#3b82f6',
+                                    backgroundColor: !canEdit ? '#94a3b8' : '#3b82f6',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontSize: '14px',
                                     fontWeight: '500',
-                                    cursor: 'pointer'
+                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1
                                 }}
                             >
                                 Tout valider
