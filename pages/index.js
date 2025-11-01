@@ -213,11 +213,52 @@ function Dashboard() {
 
       // 2. Vérifier la session admin dans la Table d'Émeraude
       const sessionIsValid = await verifyAdminSession(supabaseUser)
-      
+
       if (!sessionIsValid) {
         console.warn('❌ Session admin invalide, redirection vers login')
         router.push('/login')
         return
+      }
+
+      // 🏠 SUR L'ACCUEIL : Effacer current_page et recalculer les priorités de l'ancienne page
+      const { data: currentSession } = await supabase
+        .from('admin_sessions')
+        .select('current_page')
+        .eq('admin_user_id', supabaseUser.id)
+        .eq('is_active', true)
+        .single()
+
+      if (currentSession?.current_page && currentSession.current_page !== '/') {
+        const oldPage = currentSession.current_page
+        console.log(`🏠 Arrivée sur l'accueil depuis ${oldPage}`)
+
+        // Mettre current_page à null
+        await supabase
+          .from('admin_sessions')
+          .update({
+            current_page: null,
+            page_priority: 999,
+            page_entry_time: null
+          })
+          .eq('admin_user_id', supabaseUser.id)
+
+        // Recalculer les priorités de l'ancienne page
+        const { data: sessions } = await supabase
+          .from('admin_sessions')
+          .select('*')
+          .eq('current_page', oldPage)
+          .eq('is_active', true)
+          .order('page_entry_time', { ascending: true })
+
+        if (sessions) {
+          for (let i = 0; i < sessions.length; i++) {
+            await supabase
+              .from('admin_sessions')
+              .update({ page_priority: i + 1 })
+              .eq('id', sessions[i].id)
+          }
+          console.log(`✅ Priorités recalculées pour ${oldPage}: ${sessions.length} admin(s)`)
+        }
       }
 
       // 3. Utilisateur valide - configurer l'état
@@ -328,33 +369,10 @@ function Dashboard() {
       }
     }, 30000) // 30 secondes
 
-    // 😴 EXPULSION DIRECTE : Basée sur l'inactivité locale (toutes les 5 secondes)
+    // 🏠 PAS D'EXPULSION SUR L'ACCUEIL : C'est déjà la page de repos
+    // Les autres pages redirigent vers l'accueil après inactivité
     const surveillantInterval = setInterval(async () => {
-      try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser()
-        if (currentUser && sessionValid) {
-          // VÉRIFICATION DIRECTE de l'inactivité locale (pas la DB !)
-          const inactiveTime = (Date.now() - lastActivity) / 1000 / 60 // minutes
-          
-          if (inactiveTime > 5) { // 🎯 5 MINUTES
-            console.log('😴 INACTIVITÉ LOCALE DÉTECTÉE ! Auto-expulsion en cours...')
-            
-            // Auto-expulsion
-            await supabase
-              .from('admin_sessions')
-              .update({ is_active: false })
-              .eq('admin_user_id', currentUser.id)
-            
-            // Déconnexion forcée
-            await supabase.auth.signOut()
-            
-            alert('⚔️ EXPULSION : Vous avez été déconnecté pour inactivité (5 minutes) !')
-            router.push('/login')
-          }
-        }
-      } catch (error) {
-        console.error('Erreur surveillant:', error)
-      }
+      // Aucune action sur l'accueil - page de repos par défaut
     }, 5000) // 5 secondes
 
     // Écouter les changements d'état d'authentification
@@ -507,19 +525,6 @@ function Dashboard() {
         <p style={{ color: '#6b7280', margin: 0 }}>
           Bienvenue {user?.email ? user.email.split('@')[0].charAt(0).toUpperCase() + user.email.split('@')[0].slice(1) : 'ACLEF Admin'}
         </p>
-        <span style={{
-          fontSize: '12px',
-          color: inactivityTime >= 240 ? '#dc2626' : inactivityTime >= 180 ? '#f59e0b' : '#10b981',
-          backgroundColor: inactivityTime >= 240 ? '#fee2e2' : inactivityTime >= 180 ? '#fef3c7' : '#d1fae5',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          fontWeight: 'bold'
-        }}>
-          {inactivityTime >= 300 ? '😴 ENDORMI!' :
-           inactivityTime >= 240 ? `⚠️ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-           inactivityTime >= 180 ? `⏰ ${Math.floor((300 - inactivityTime) / 60)}m${(300 - inactivityTime) % 60}s` :
-           `🟢 Actif`}
-        </span>
       </div>
 
       {/* Layout Principal : Planning + Gestion | Messagerie */}

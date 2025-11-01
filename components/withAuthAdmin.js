@@ -49,7 +49,40 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
     const [sessionValid, setSessionValid] = useState(false)
     const [inactivityTime, setInactivityTime] = useState(0) // Temps d'inactivité en secondes
     const [lastHeartbeat, setLastHeartbeat] = useState(null) // Dernier heartbeat
+    const [priority, setPriority] = useState(999) // Priorité sur la page actuelle
     const router = useRouter()
+
+    // 🎯 CALCULER ET METTRE À JOUR LES PRIORITÉS D'UNE PAGE
+    const recalculatePriorities = async (pagePath) => {
+      try {
+        // Récupérer toutes les sessions actives sur cette page
+        const { data: sessions, error } = await supabase
+          .from('admin_sessions')
+          .select('*')
+          .eq('current_page', pagePath)
+          .eq('is_active', true)
+          .order('page_entry_time', { ascending: true })
+
+        if (error || !sessions) {
+          console.warn('⚠️ Impossible de récupérer les sessions pour recalcul priorités')
+          return
+        }
+
+        // Assigner les priorités (1, 2, 3, 4, ...)
+        for (let i = 0; i < sessions.length; i++) {
+          const newPriority = i + 1
+          await supabase
+            .from('admin_sessions')
+            .update({ page_priority: newPriority })
+            .eq('id', sessions[i].id)
+        }
+
+        console.log(`✅ Priorités recalculées pour ${pagePath}: ${sessions.length} admin(s)`)
+
+      } catch (error) {
+        console.error('❌ Erreur recalcul priorités:', error)
+      }
+    }
 
     const verifyAdminSession = async (supabaseUser) => {
       try {
@@ -81,11 +114,47 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
           return false
         }
 
-        // Mettre à jour le heartbeat
+        // Détecter la page actuelle
+        const currentPage = router.pathname
+        const oldPage = adminSession.current_page
+        const isPageChange = oldPage && oldPage !== currentPage
+        const isNewArrival = !oldPage || !adminSession.page_entry_time // Arrivée depuis accueil ou première fois
+
+        // IMPORTANT : Mettre à jour la page AVANT de recalculer
         await supabase
           .from('admin_sessions')
-          .update({ heartbeat: new Date().toISOString() })
+          .update({
+            heartbeat: new Date().toISOString(),
+            current_page: currentPage,
+            // Nouveau timestamp si changement de page OU si pas de timestamp (arrivée depuis accueil)
+            page_entry_time: (isPageChange || isNewArrival) ? new Date().toISOString() : adminSession.page_entry_time
+          })
           .eq('id', adminSession.id)
+
+        // Si changement de page, recalculer les priorités de l'ancienne ET nouvelle page
+        if (isPageChange) {
+          console.log(`📄 Changement de page: ${oldPage} → ${currentPage}`)
+          // Recalculer l'ancienne page (l'admin n'y est plus)
+          await recalculatePriorities(oldPage)
+          // Recalculer la nouvelle page (l'admin vient d'y arriver)
+          await recalculatePriorities(currentPage)
+        } else if (isNewArrival) {
+          // Arrivée depuis l'accueil ou première visite
+          console.log(`🆕 Arrivée sur ${currentPage}`)
+          await recalculatePriorities(currentPage)
+        }
+
+        // Récupérer la priorité mise à jour
+        const { data: updatedSession } = await supabase
+          .from('admin_sessions')
+          .select('page_priority')
+          .eq('id', adminSession.id)
+          .single()
+
+        if (updatedSession) {
+          setPriority(updatedSession.page_priority)
+          console.log(`🎯 Priorité actuelle: ${updatedSession.page_priority}`)
+        }
 
         console.log('✅ Session admin valide dans la Table d\'Émeraude')
         return true
@@ -142,6 +211,55 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
       }
     }
 
+    // 📄 SURVEILLER LES CHANGEMENTS DE PAGE
+    useEffect(() => {
+      const handleRouteChange = async () => {
+        if (user && sessionValid) {
+          console.log('🔄 Changement de route détecté:', router.pathname)
+          // Forcer la vérification de session qui mettra à jour la page
+          const { data: { user: currentUser } } = await supabase.auth.getUser()
+          if (currentUser) {
+            await verifyAdminSession(currentUser)
+          }
+        }
+      }
+
+      router.events?.on('routeChangeComplete', handleRouteChange)
+
+      return () => {
+        router.events?.off('routeChangeComplete', handleRouteChange)
+      }
+    }, [user, sessionValid, router])
+
+    // 🎯 ÉCOUTER LES CHANGEMENTS DE PRIORITÉ EN TEMPS RÉEL
+    useEffect(() => {
+      if (!user) return
+
+      const channel = supabase
+        .channel('admin_priority_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'admin_sessions',
+            filter: `admin_user_id=eq.${user.id}`
+          },
+          (payload) => {
+            const newPriority = payload.new.page_priority
+            if (newPriority && newPriority !== priority) {
+              console.log(`🔄 Priorité mise à jour en temps réel: ${newPriority}`)
+              setPriority(newPriority)
+            }
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }, [user, priority])
+
     useEffect(() => {
       checkAuthentication()
 
@@ -162,30 +280,45 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
         try {
           // Distinguer refresh (F5) vs fermeture réelle de l'onglet
           const isRefresh = e.persisted || (window.performance && window.performance.navigation.type === 1)
-          
+
           if (isRefresh) {
             console.log('🔄 Refresh détecté - Session préservée')
             return // Ne pas désactiver la session sur refresh
           }
-          
+
           console.log('🚪 Fermeture réelle détectée - Déconnexion forcée...')
-          
+
           // 🚨 NOUVELLE SOLUTION : Déconnexion urgence avec SendBeacon/XHR
           if (user && sessionValid) {
             console.log('🚪 Fermeture détectée, déconnexion urgence...')
             deconnexionUrgence(user)
           }
-          
+
           // Garder le code de sauvegarde existant
           const { data: { user: currentUser } } = await supabase.auth.getUser()
           if (currentUser) {
+            // Récupérer la page actuelle avant de désactiver
+            const { data: session } = await supabase
+              .from('admin_sessions')
+              .select('current_page')
+              .eq('admin_user_id', currentUser.id)
+              .eq('is_active', true)
+              .single()
+
+            const currentPagePath = session?.current_page
+
             // Désactiver la session seulement en cas de fermeture réelle
             await supabase
               .from('admin_sessions')
               .update({ is_active: false })
               .eq('admin_user_id', currentUser.id)
               .eq('is_active', true)
-            
+
+            // Recalculer les priorités de la page
+            if (currentPagePath) {
+              await recalculatePriorities(currentPagePath)
+            }
+
             console.log('✅ Session désactivée à la fermeture réelle')
           }
         } catch (error) {
@@ -219,7 +352,7 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
           const { data: { user: currentUser } } = await supabase.auth.getUser()
           if (currentUser && sessionValid) {
             const inactiveTime = (Date.now() - lastActivity) / 1000 / 60 // minutes
-            
+
             if (inactiveTime < 1) { // Actif dans la dernière minute
               const now = new Date().toISOString()
               await supabase
@@ -227,7 +360,7 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
                 .update({ heartbeat: now })
                 .eq('admin_user_id', currentUser.id)
                 .eq('is_active', true)
-              
+
               setLastHeartbeat(now)
               console.log('💡 Heartbeat gardien actif envoyé')
             } else {
@@ -239,28 +372,34 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
         }
       }, 30000) // 30 secondes
 
-      // 😴 EXPULSION DIRECTE : Basée sur l'inactivité locale (toutes les 5 secondes)
+      // 😴 REDIRECTION ACCUEIL : Basée sur l'inactivité locale (toutes les 5 secondes)
       const surveillantInterval = setInterval(async () => {
         try {
           const { data: { user: currentUser } } = await supabase.auth.getUser()
           if (currentUser && sessionValid) {
             // VÉRIFICATION DIRECTE de l'inactivité locale (pas la DB !)
             const inactiveTime = (Date.now() - lastActivity) / 1000 / 60 // minutes
-            
-            if (inactiveTime > 5) { // 🎯 5 MINUTES
-              console.log('😴 INACTIVITÉ LOCALE DÉTECTÉE ! Auto-expulsion en cours...')
-              
-              // Auto-expulsion
-              await supabase
+
+            if (inactiveTime > 2) { // 🎯 2 MINUTES
+              console.log('😴 INACTIVITÉ LOCALE DÉTECTÉE ! Redirection vers accueil...')
+
+              // Récupérer la page actuelle
+              const { data: session } = await supabase
                 .from('admin_sessions')
-                .update({ is_active: false })
+                .select('current_page')
                 .eq('admin_user_id', currentUser.id)
-              
-              // Déconnexion forcée
-              await supabase.auth.signOut()
-              
-              alert('⚔️ EXPULSION : Vous avez été déconnecté pour inactivité (5 minutes) !')
-              router.push('/login')
+                .eq('is_active', true)
+                .single()
+
+              const currentPagePath = session?.current_page
+
+              // Recalculer les priorités de la page qu'on quitte
+              if (currentPagePath && currentPagePath !== '/') {
+                await recalculatePriorities(currentPagePath)
+              }
+
+              // Redirection vers l'accueil (SANS déconnexion, SANS message)
+              router.push('/')
             }
           }
         } catch (error) {
@@ -299,14 +438,33 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
 
     const logout = async () => {
       try {
-        // 1. Désactiver la session admin
+        // 1. Récupérer la page actuelle avant de désactiver la session
         const { data: { user: currentUser } } = await supabase.auth.getUser()
+        let currentPagePath = null
+
         if (currentUser) {
+          // Récupérer la page actuelle de la session
+          const { data: session } = await supabase
+            .from('admin_sessions')
+            .select('current_page')
+            .eq('admin_user_id', currentUser.id)
+            .eq('is_active', true)
+            .single()
+
+          currentPagePath = session?.current_page
+
+          // Désactiver la session admin
           await supabase
             .from('admin_sessions')
             .update({ is_active: false })
             .eq('admin_user_id', currentUser.id)
             .eq('is_active', true)
+
+          // Recalculer les priorités de la page que l'admin quitte
+          if (currentPagePath) {
+            await recalculatePriorities(currentPagePath)
+            console.log(`🔄 Priorités recalculées après départ de ${currentPagePath}`)
+          }
         }
 
         // 2. Déconnexion Supabase
@@ -372,7 +530,7 @@ export function withAuthAdmin(WrappedComponent, pageTitle = "Page Admin") {
 
     // 🎯 RENDU SANS PANNEAU DE SURVEILLANCE
     return (
-      <WrappedComponent {...props} user={user} logout={logout} inactivityTime={inactivityTime} />
+      <WrappedComponent {...props} user={user} logout={logout} inactivityTime={inactivityTime} priority={priority} />
     )
   }
 }
