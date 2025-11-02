@@ -437,40 +437,39 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 👥
                             </span>
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
-                                    <div key={index} style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '4px 8px',
-                                        backgroundColor: '#f9fafb',
-                                        borderRadius: '6px',
-                                        border: '1px solid #e5e7eb',
-                                        fontSize: '13px'
-                                    }}>
-                                        <div style={{
-                                            width: '6px',
-                                            height: '6px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#10b981',
-                                            flexShrink: 0
-                                        }} />
-                                        <span style={{ color: '#374151', fontWeight: '500' }}>
-                                            {admin.name}
-                                        </span>
-                                        {admin.currentPage && admin.currentPage !== '/' && (
-                                            <span style={{
-                                                fontSize: '11px',
-                                                color: '#6b7280',
-                                                backgroundColor: '#f3f4f6',
-                                                padding: '1px 4px',
-                                                borderRadius: '3px'
-                                            }}>
-                                                {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
+
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            color: 'white'
+                                        }}>
+                                            <span style={{ fontWeight: '600' }}>
+                                                {admin.name}
                                             </span>
-                                        )}
-                                    </div>
-                                ))}
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </>
@@ -491,6 +490,23 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                     Gérez les formateurs et leurs accès au système
                 </p>
             </div>
+
+            {/* Bandeau de verrouillage si un admin vert est sur la page */}
+            {!canEdit && connectedAdmins.some(admin => admin.priority === 1 && admin.currentPage === '/gestion-formateurs') && (
+                <div style={{
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    padding: '16px 24px',
+                    borderRadius: '8px',
+                    marginBottom: '20px',
+                    textAlign: 'center',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                }}>
+                    🚫 Page verrouillée. {connectedAdmins.find(admin => admin.priority === 1 && admin.currentPage === '/gestion-formateurs')?.name} modifie actuellement cette page. Toutes les actions sont désactivées jusqu'à son départ.
+                </div>
+            )}
 
             {/* Message de notification */}
             {message && (
