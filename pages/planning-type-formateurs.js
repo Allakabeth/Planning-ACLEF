@@ -17,7 +17,8 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
     const [message, setMessage] = useState('')
     const [planningData, setPlanningData] = useState({})
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
-    
+    const [formateursVerrouilles, setFormateursVerrouilles] = useState([]); // Liste des formateurs verrouillés par d'autres admins
+
     // Configuration des jours et créneaux - ✅ AM au lieu d'Après-midi
     const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
     const creneaux = ['Matin', 'AM']
@@ -54,6 +55,7 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
         if (!user) return;
 
         fetchConnectedAdmins();
+        fetchFormateursVerrouilles();
 
         const channel = supabase
             .channel('admin_sessions_changes_planning_type_formateurs')
@@ -66,17 +68,33 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
                 },
                 () => {
                     fetchConnectedAdmins();
+                    fetchFormateursVerrouilles();
                 }
             )
             .subscribe();
 
         const refreshInterval = setInterval(() => {
             fetchConnectedAdmins();
+            fetchFormateursVerrouilles();
         }, 30000);
 
         return () => {
             supabase.removeChannel(channel);
             clearInterval(refreshInterval);
+        };
+    }, [user, formateurs]);
+
+    // 🔒 Cleanup: Libérer le verrouillage formateur au unmount
+    useEffect(() => {
+        return () => {
+            if (user?.email) {
+                supabase
+                    .from('admin_sessions')
+                    .update({ editing_formateur_id: null })
+                    .eq('admin_email', user.email)
+                    .eq('is_active', true)
+                    .then(() => console.log('🔓 Lock formateur libéré au unmount'));
+            }
         };
     }, [user]);
 
@@ -170,13 +188,30 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
     const handleFormateurChange = async (formateurId) => {
         setFormateurSelectionne(formateurId)
         setIsLoading(true)
-        
+
+        // 🔒 Mettre à jour le lock dans admin_sessions
+        try {
+            const { error } = await supabase
+                .from('admin_sessions')
+                .update({ editing_formateur_id: formateurId || null })
+                .eq('admin_email', user?.email)
+                .eq('is_active', true);
+
+            if (error) {
+                console.error('❌ Erreur update lock formateur:', error);
+            } else {
+                console.log(`🔒 Lock formateur mis à jour: ${formateurId || 'libéré'}`);
+            }
+        } catch (error) {
+            console.error('❌ Erreur handleFormateurChange:', error);
+        }
+
         if (formateurId) {
             await loadPlanningFormateur(formateurId)
         } else {
             initializePlanning()
         }
-        
+
         setIsLoading(false)
     }
 
@@ -212,6 +247,44 @@ function PlanningTypeFormateurs({ user, logout, inactivityTime, priority }) {
             setConnectedAdmins(adminsFormatted);
         } catch (error) {
             console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
+
+    // 🔒 FONCTION: Récupérer les formateurs verrouillés par d'autres admins
+    const fetchFormateursVerrouilles = async () => {
+        try {
+            const { data: sessions, error } = await supabase
+                .from('admin_sessions')
+                .select('editing_formateur_id, admin_email')
+                .eq('is_active', true)
+                .not('editing_formateur_id', 'is', null)
+                .neq('admin_email', user?.email);
+
+            if (error) {
+                console.error('❌ Erreur récupération formateurs verrouillés:', error);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setFormateursVerrouilles([]);
+                return;
+            }
+
+            const enrichi = sessions.map(lock => {
+                const formateur = formateurs.find(f => f.id === lock.editing_formateur_id);
+                return {
+                    formateur_id: lock.editing_formateur_id,
+                    admin_email: lock.admin_email,
+                    admin_name: lock.admin_email.split('@')[0].charAt(0).toUpperCase() + lock.admin_email.split('@')[0].slice(1),
+                    formateur_nom: formateur ? `${formateur.prenom} ${formateur.nom}` : 'Inconnu'
+                };
+            });
+
+            setFormateursVerrouilles(enrichi);
+            console.log('🔒 Formateurs verrouillés:', enrichi);
+
+        } catch (error) {
+            console.error('❌ Erreur fetchFormateursVerrouilles:', error);
         }
     };
 
@@ -514,6 +587,30 @@ L'équipe de coordination ACLEF`,
                 </div>
             </div>
 
+            {/* Bandeau avertissement formateur verrouillé */}
+            {formateurSelectionne && formateursVerrouilles.some(v => v.formateur_id === formateurSelectionne) && (
+                <div style={{
+                    backgroundColor: '#fef3c7',
+                    borderLeft: '4px solid #f59e0b',
+                    borderRadius: '8px',
+                    padding: '12px 20px',
+                    marginBottom: '20px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                }}>
+                    <span style={{ fontSize: '20px' }}>⚠️</span>
+                    <span style={{
+                        color: '#92400e',
+                        fontSize: '14px',
+                        fontWeight: '600'
+                    }}>
+                        {formateursVerrouilles.find(v => v.formateur_id === formateurSelectionne)?.admin_name} édite le planning type de {formateursVerrouilles.find(v => v.formateur_id === formateurSelectionne)?.formateur_nom}. Vous ne pouvez pas le modifier pour le moment.
+                    </span>
+                </div>
+            )}
+
             {/* Bandeau blanc avec status */}
             <div className="no-print" style={{
                 backgroundColor: 'white',
@@ -560,40 +657,39 @@ L'équipe de coordination ACLEF`,
                                 👥
                             </span>
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
-                                    <div key={index} style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '4px 8px',
-                                        backgroundColor: '#f9fafb',
-                                        borderRadius: '6px',
-                                        border: '1px solid #e5e7eb',
-                                        fontSize: '13px'
-                                    }}>
-                                        <div style={{
-                                            width: '6px',
-                                            height: '6px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#10b981',
-                                            flexShrink: 0
-                                        }} />
-                                        <span style={{ color: '#374151', fontWeight: '500' }}>
-                                            {admin.name}
-                                        </span>
-                                        {admin.currentPage && admin.currentPage !== '/' && (
-                                            <span style={{
-                                                fontSize: '11px',
-                                                color: '#6b7280',
-                                                backgroundColor: '#f3f4f6',
-                                                padding: '1px 4px',
-                                                borderRadius: '3px'
-                                            }}>
-                                                {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
+
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            color: 'white'
+                                        }}>
+                                            <span style={{ fontWeight: '600' }}>
+                                                {admin.name}
                                             </span>
-                                        )}
-                                    </div>
-                                ))}
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </>
@@ -662,11 +758,19 @@ L'équipe de coordination ACLEF`,
                         }}
                     >
                         <option value="">-- Choisir un formateur --</option>
-                        {formateurs.map((formateur) => (
-                            <option key={formateur.id} value={formateur.id}>
-                                {formateur.prenom} {formateur.nom}
-                            </option>
-                        ))}
+                        {formateurs.map((formateur) => {
+                            const estVerrouille = formateursVerrouilles.some(v => v.formateur_id === formateur.id);
+                            return (
+                                <option
+                                    key={formateur.id}
+                                    value={formateur.id}
+                                    disabled={estVerrouille}
+                                >
+                                    {formateur.prenom} {formateur.nom}
+                                    {estVerrouille && ' (En cours d\'édition)'}
+                                </option>
+                            );
+                        })}
                     </select>
                     
                     {formateurSelectionne && (
@@ -998,12 +1102,12 @@ L'équipe de coordination ACLEF`,
                     <h3 style={{
                         fontSize: '18px',
                         fontWeight: '600',
-                        color: '#1d4ed8',
+                        color: 'white',
                         marginBottom: '8px'
                     }}>
                         Sélectionnez un formateur pour commencer
                     </h3>
-                    <p style={{ color: '#3b82f6', fontSize: '14px' }}>
+                    <p style={{ color: 'white', fontSize: '14px' }}>
                         Choisissez un formateur dans la liste déroulante ci-dessus pour consulter et valider son planning type.
                     </p>
                 </div>
