@@ -20,6 +20,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     const [showAjouterForm, setShowAjouterForm] = useState(false)
     const [prenom, setPrenom] = useState('')
     const [nom, setNom] = useState('')
+    const [bureau, setBureau] = useState(false)
     
     // États formulaire modification
     const [formateurEnModification, setFormateurEnModification] = useState(null)
@@ -201,7 +202,8 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                 nom: nom.trim(),
                 email: emailFictif, // Email fictif pour l'authentification
                 role: 'formateur',
-                archive: false
+                archive: false,
+                bureau: bureau
             }])
             
             if (error) throw error
@@ -212,6 +214,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
             // Réinitialiser le formulaire
             setPrenom('')
             setNom('')
+            setBureau(false)
             setShowAjouterForm(false)
             await fetchFormateurs()
             
@@ -243,10 +246,11 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
             
             const { error } = await supabase
                 .from('users')
-                .update({ 
+                .update({
                     prenom: formateurEnModification.prenom.trim(),
                     nom: formateurEnModification.nom.trim(),
-                    email: nouvelEmailFictif
+                    email: nouvelEmailFictif,
+                    bureau: formateurEnModification.bureau || false
                 })
                 .eq('id', formateurEnModification.id)
             
@@ -620,6 +624,28 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 />
                             </div>
                         </div>
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '14px',
+                                color: '#6b7280',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={bureau}
+                                    onChange={(e) => setBureau(e.target.checked)}
+                                    style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        cursor: 'pointer'
+                                    }}
+                                />
+                                <span>Membre du Bureau</span>
+                            </label>
+                        </div>
                         {prenom && nom && (
                             <div style={{
                                 backgroundColor: '#f3f4f6',
@@ -655,6 +681,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     setShowAjouterForm(false)
                                     setPrenom('')
                                     setNom('')
+                                    setBureau(false)
                                 }}
                                 disabled={!canEdit}
                                 title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
@@ -742,6 +769,31 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     required
                                 />
                             </div>
+                        </div>
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '14px',
+                                color: '#92400e',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formateurEnModification.bureau || false}
+                                    onChange={(e) => setFormateurEnModification({
+                                        ...formateurEnModification,
+                                        bureau: e.target.checked
+                                    })}
+                                    style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        cursor: 'pointer'
+                                    }}
+                                />
+                                <span>Membre du Bureau</span>
+                            </label>
                         </div>
                         {formateurEnModification.prenom && formateurEnModification.nom && (
                             <div style={{
@@ -872,6 +924,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                             <tr style={{ backgroundColor: '#f9fafb' }}>
                                 <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Statut</th>
                                 <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Nom et prénom</th>
+                                <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Bureau</th>
                                 <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Email fictif</th>
                                 <th style={{ padding: '12px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Connexion</th>
                                 <th style={{ padding: '12px', textAlign: 'center', color: '#6b7280', fontWeight: '600', fontSize: '14px' }}>Actions</th>
@@ -881,21 +934,64 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                             {formateurs.map((formateur) => (
                                 <tr key={formateur.id} style={{ borderTop: '1px solid #e5e7eb' }}>
                                     <td style={{ padding: '12px' }}>
-                                        <span style={{
-                                            padding: '4px 12px',
-                                            borderRadius: '20px',
-                                            fontSize: '12px',
-                                            fontWeight: '500',
-                                            backgroundColor: formateur.archive ? '#f3f4f6' : '#d1fae5',
-                                            color: formateur.archive ? '#6b7280' : '#065f46'
-                                        }}>
-                                            {formateur.archive ? 'Archivé' : 'Actif'}
-                                        </span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{
+                                                padding: '4px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '12px',
+                                                fontWeight: '500',
+                                                backgroundColor: formateur.archive ? '#f3f4f6' : '#d1fae5',
+                                                color: formateur.archive ? '#6b7280' : '#065f46'
+                                            }}>
+                                                {formateur.archive ? 'Archivé' : 'Actif'}
+                                            </span>
+                                            {formateur.bureau && !formateur.archive && (
+                                                <span style={{
+                                                    width: '24px',
+                                                    height: '24px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#7c3aed',
+                                                    color: 'white',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '12px',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    B
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td style={{ padding: '12px' }}>
                                         <div>
                                             <div style={{ fontWeight: '500' }}>{formateur.nom} {formateur.prenom}</div>
                                         </div>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {formateur.bureau ? (
+                                            <span style={{
+                                                padding: '4px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '12px',
+                                                fontWeight: '500',
+                                                backgroundColor: '#e0e7ff',
+                                                color: '#4338ca'
+                                            }}>
+                                                Oui
+                                            </span>
+                                        ) : (
+                                            <span style={{
+                                                padding: '4px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '12px',
+                                                fontWeight: '500',
+                                                backgroundColor: '#f3f4f6',
+                                                color: '#6b7280'
+                                            }}>
+                                                Non
+                                            </span>
+                                        )}
                                     </td>
                                     <td style={{ padding: '12px', fontSize: '12px', color: '#6b7280', fontFamily: 'monospace' }}>
                                         {formateur.email || genererEmailFictif(formateur.prenom, formateur.nom)}

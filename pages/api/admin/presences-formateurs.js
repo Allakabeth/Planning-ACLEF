@@ -20,6 +20,17 @@ async function handleGet(req, res) {
 
         console.log(`🔍 Chargement interventions prévues pour formateur ${formateur_id} du ${date_debut} au ${date_fin}`)
 
+        // 0. Récupérer les infos du formateur (vérifier si bureau=true)
+        const { data: formateurData, error: formateurError } = await supabaseAdmin
+            .from('users')
+            .select('id, nom, prenom, bureau')
+            .eq('id', formateur_id)
+            .single()
+
+        if (formateurError) throw formateurError
+
+        const formateurABureau = formateurData?.bureau === true
+
         // 1. Récupérer le planning type du formateur
         const { data: planningType, error: planningTypeError } = await supabaseAdmin
             .from('planning_type_formateurs')
@@ -166,7 +177,7 @@ async function handleGet(req, res) {
             }
         }
 
-        // 7. Enrichir avec les présences déclarées
+        // 7. Enrichir avec les présences déclarées ET ajouter les présences "Bureau" (sans intervention prévue)
         const resultats = interventionsPrevues.map(intervention => {
             const presenceDeclaree = presencesDeclarees.find(p =>
                 p.date === intervention.date && p.periode === intervention.periode
@@ -193,6 +204,39 @@ async function handleGet(req, res) {
                     'non_declare'
             }
         })
+
+        // 8. Ajouter les présences "Bureau" (présent sans intervention prévue, UNIQUEMENT si formateur a bureau=true)
+        if (formateurABureau) {
+            presencesDeclarees.forEach(presence => {
+                // Vérifier si cette présence correspond à une intervention déjà listée
+                const interventionExiste = resultats.find(r =>
+                    r.date === presence.date && r.periode === presence.periode
+                )
+
+                // Si pas d'intervention prévue MAIS présent déclaré = Bureau
+                if (!interventionExiste && presence.present) {
+                    const dateObj = new Date(presence.date)
+                    const jourFrancais = dateObj.toLocaleDateString('fr-FR', { weekday: 'long' })
+                    const jourCapitalized = jourFrancais.charAt(0).toUpperCase() + jourFrancais.slice(1)
+                    const creneauDisplay = presence.periode === 'matin' ? 'Matin' : 'AM'
+
+                    resultats.push({
+                        date: presence.date,
+                        jour: jourCapitalized,
+                        creneau: creneauDisplay,
+                        periode: presence.periode,
+                        statut_prevu: 'bureau', // NOUVEAU STATUT
+                        lieu_prevu: 'Bureau',
+                        lieu_prevu_initiale: 'B',
+                        source: 'presence_bureau',
+                        present: presence.present,
+                        lieu_declare: presence.lieu,
+                        date_declaration: presence.created_at,
+                        statut_final: 'present'
+                    })
+                }
+            })
+        }
 
         // Trier par date et créneau
         resultats.sort((a, b) => {

@@ -310,7 +310,13 @@ export default function MaPresence() {
 
                 if (estPresent && !interventionPrevue) {
                     // Formateur dit présent mais n'était pas prévu
-                    warnings.push(`⚠️ ${creneau}: Vous n'étiez pas prévu d'intervenir`)
+                    // Si formateur n'a PAS de bureau => ERREUR BLOQUANTE
+                    if (!user.bureau) {
+                        erreurs.push(`❌ ${creneau}: Vous n'êtes pas planifié aujourd'hui.\n\nIl doit y avoir une erreur.\nParlez-en aux responsables de formation.`)
+                    } else {
+                        // Formateur a un bureau => OK, intervention Bureau
+                        console.log(`🏢 ${creneau}: Intervention Bureau autorisée`)
+                    }
                 } else if (estPresent && interventionPrevue) {
                     // Formateur dit présent et était effectivement prévu
                     const statutPrevu = interventionPrevue.statut
@@ -548,19 +554,86 @@ export default function MaPresence() {
 
                 {/* Messages */}
                 {message && (
-                    <div style={{
-                        padding: '15px',
-                        borderRadius: '12px',
-                        marginBottom: '20px',
-                        backgroundColor: message.includes('❌') ? '#fee2e2' : '#d1fae5',
-                        color: message.includes('❌') ? '#991b1b' : '#065f46',
-                        fontSize: '16px',
-                        textAlign: 'center',
-                        fontWeight: '500',
-                        border: `2px solid ${message.includes('❌') ? '#fecaca' : '#a7f3d0'}`
-                    }}>
-                        {message}
-                    </div>
+                    <>
+                        {message.includes('pas planifié') ? (
+                            // Popup modal pour erreur critique "pas planifié"
+                            <div style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 9999
+                            }}>
+                                <div style={{
+                                    backgroundColor: 'white',
+                                    padding: '30px',
+                                    borderRadius: '16px',
+                                    maxWidth: '90%',
+                                    width: '400px',
+                                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{
+                                        fontSize: '48px',
+                                        marginBottom: '15px'
+                                    }}>⚠️</div>
+                                    <h2 style={{
+                                        fontSize: '20px',
+                                        fontWeight: 'bold',
+                                        color: '#991b1b',
+                                        marginBottom: '15px'
+                                    }}>Vous n'êtes pas planifié aujourd'hui</h2>
+                                    <p style={{
+                                        fontSize: '16px',
+                                        color: '#6b7280',
+                                        marginBottom: '10px',
+                                        lineHeight: '1.5'
+                                    }}>Il doit y avoir une erreur.</p>
+                                    <p style={{
+                                        fontSize: '16px',
+                                        fontWeight: '600',
+                                        color: '#374151',
+                                        marginBottom: '25px'
+                                    }}>Parlez-en aux responsables de formation.</p>
+                                    <button
+                                        onClick={() => setMessage('')}
+                                        style={{
+                                            padding: '12px 30px',
+                                            backgroundColor: '#dc2626',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            fontSize: '16px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        J'ai compris
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            // Bandeau normal pour autres messages
+                            <div style={{
+                                padding: '15px',
+                                borderRadius: '12px',
+                                marginBottom: '20px',
+                                backgroundColor: message.includes('❌') ? '#fee2e2' : '#d1fae5',
+                                color: message.includes('❌') ? '#991b1b' : '#065f46',
+                                fontSize: '16px',
+                                textAlign: 'center',
+                                fontWeight: '500',
+                                border: `2px solid ${message.includes('❌') ? '#fecaca' : '#a7f3d0'}`
+                            }}>
+                                {message}
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* Légende */}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabaseClient'
 
@@ -7,7 +7,53 @@ export default function LoginAdmin() {
     const [password, setPassword] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [errorMessage, setErrorMessage] = useState('')
+    const [connectedAdmins, setConnectedAdmins] = useState([])
     const router = useRouter()
+
+    // Récupérer les admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            const { data: sessions, error } = await supabase
+                .from('admin_sessions')
+                .select('admin_email, is_active')
+                .eq('is_active', true)
+
+            if (error) {
+                console.error('Erreur fetch sessions:', error)
+                return
+            }
+
+            if (sessions) {
+                setConnectedAdmins(sessions.map(s => s.admin_email))
+            }
+        } catch (error) {
+            console.error('Erreur récupération admins connectés:', error)
+        }
+    }
+
+    useEffect(() => {
+        // Fetch initial
+        fetchConnectedAdmins()
+
+        // Realtime subscription
+        const channel = supabase
+            .channel('admin-sessions-login')
+            .on('postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                () => {
+                    fetchConnectedAdmins()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [])
 
     const generateSessionToken = () => {
         const timestamp = Date.now()
@@ -258,16 +304,23 @@ export default function LoginAdmin() {
                     backgroundColor: '#f0f9ff',
                     borderRadius: '4px',
                     fontSize: '12px',
-                    color: '#0369a1',
                     textAlign: 'center'
                 }}>
-                    <strong>Administrateurs autorisés :</strong><br />
-                    albena@aclef.fr, fanny@aclef.fr,<br />
-                    mathieu@aclef.fr, sarah@aclef.fr
-                    <br />
-                    <small style={{ color: '#dc2626', fontSize: '10px', fontWeight: 'bold' }}>
-                        UN SEUL ADMINISTRATEUR À LA FOIS !
-                    </small>
+                    <strong style={{ color: '#0369a1' }}>Administrateurs autorisés :</strong><br />
+                    {['albena@aclef.fr', 'fanny@aclef.fr', 'mathieu@aclef.fr', 'sarah@aclef.fr'].map((adminEmail, index, array) => {
+                        const isConnected = connectedAdmins.includes(adminEmail)
+                        return (
+                            <span key={adminEmail}>
+                                <span style={{
+                                    color: isConnected ? '#10b981' : '#0369a1',
+                                    fontWeight: isConnected ? 'bold' : 'normal'
+                                }}>
+                                    {adminEmail}
+                                </span>
+                                {index < array.length - 1 && (index === 1 ? <><br /></> : ', ')}
+                            </span>
+                        )
+                    })}
                 </div>
             </div>
         </div>

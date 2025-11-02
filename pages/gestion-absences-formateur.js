@@ -103,7 +103,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         try {
             const { data, error } = await supabase
                 .from('users')
-                .select('id, nom, prenom')
+                .select('id, nom, prenom, bureau')
                 .eq('role', 'formateur')
                 .eq('archive', false)
                 .order('nom')
@@ -141,7 +141,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     const calculerStats = (interventionsData) => {
         let totalInterventions = 0
         let presentsInterventions = 0
-        let absentsInterventions = 0
+        let bureauInterventions = 0
         let nonDeclareInterventions = 0
 
         const lieuxStats = {}
@@ -150,14 +150,16 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             totalInterventions++
             if (intervention.statut_final === 'present') {
                 presentsInterventions++
+                // Compter les interventions Bureau
+                if (intervention.statut_prevu === 'bureau') {
+                    bureauInterventions++
+                }
                 const lieuDeclare = intervention.lieu_declare || intervention.lieu_prevu_initiale || 'Non défini'
                 if (lieuxStats[lieuDeclare]) {
                     lieuxStats[lieuDeclare]++
                 } else {
                     lieuxStats[lieuDeclare] = 1
                 }
-            } else if (intervention.statut_final === 'absent') {
-                absentsInterventions++
             } else {
                 nonDeclareInterventions++
             }
@@ -168,7 +170,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         setStats({
             totalInterventions,
             presentsInterventions,
-            absentsInterventions,
+            bureauInterventions,
             nonDeclareInterventions,
             tauxPresence,
             lieuxStats
@@ -210,6 +212,82 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         }
     };
 
+    const declarerPresenceAdmin = async (intervention, estPresent) => {
+        if (!formateurSelectionne) return
+
+        try {
+            setIsLoading(true)
+
+            const periode = intervention.creneau === 'Matin' ? 'matin' : 'apres_midi'
+            const lieuParDefaut = 'ACLEF'
+
+            // Vérifier si une entrée existe déjà
+            const { data: existingPresence, error: checkError } = await supabase
+                .from('presence_formateurs')
+                .select('id')
+                .eq('formateur_id', formateurSelectionne)
+                .eq('date', intervention.date)
+                .eq('periode', periode)
+                .single()
+
+            if (checkError && checkError.code !== 'PGRST116') {
+                throw checkError
+            }
+
+            // Si estPresent === null, c'est une annulation (supprimer l'entrée)
+            if (estPresent === null) {
+                if (existingPresence) {
+                    const { error: deleteError } = await supabase
+                        .from('presence_formateurs')
+                        .delete()
+                        .eq('id', existingPresence.id)
+
+                    if (deleteError) throw deleteError
+
+                    setMessage('✅ Remis en "Non déclaré"')
+                }
+            } else {
+                // Déclaration normale (présent ou absent)
+                if (existingPresence) {
+                    // Mettre à jour l'enregistrement existant
+                    const { error: updateError } = await supabase
+                        .from('presence_formateurs')
+                        .update({ present: estPresent })
+                        .eq('id', existingPresence.id)
+
+                    if (updateError) throw updateError
+                } else {
+                    // Créer un nouvel enregistrement
+                    const { error: insertError } = await supabase
+                        .from('presence_formateurs')
+                        .insert([{
+                            formateur_id: formateurSelectionne,
+                            date: intervention.date,
+                            periode: periode,
+                            lieu: lieuParDefaut,
+                            present: estPresent
+                        }])
+
+                    if (insertError) throw insertError
+                }
+
+                setMessage(`✅ Présence déclarée : ${estPresent ? 'Présent' : 'Absent'}`)
+            }
+
+            setTimeout(() => setMessage(''), 3000)
+
+            // Recharger les données
+            await chargerPresences()
+
+        } catch (error) {
+            console.error('Erreur déclaration présence:', error)
+            setMessage('❌ Erreur lors de la déclaration')
+            setTimeout(() => setMessage(''), 3000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const exporterExcel = async () => {
         if (!formateurSelectionne || presences.length === 0) {
             setMessage('Veuillez sélectionner un formateur et charger ses données')
@@ -227,7 +305,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                 'Lieu prévu': intervention.lieu_prevu,
                 'Type intervention': intervention.statut_prevu === 'affecte_coordo' ? 'Affecté coordo' :
                                    intervention.statut_prevu === 'dispo_except' ? 'Dispo exceptionnelle' :
-                                   intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' : intervention.statut_prevu,
+                                   intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' :
+                                   intervention.statut_prevu === 'bureau' ? 'Bureau' : intervention.statut_prevu,
                 'Présence déclarée': intervention.statut_final === 'present' ? 'Présent' :
                                    intervention.statut_final === 'absent' ? 'Absent' : 'Non déclaré',
                 'Lieu déclaré': intervention.lieu_declare || '-',
@@ -266,7 +345,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         // En-tête avec informations du formateur
         let csv = `Interventions prévues de ${formateurInfo.nom} ${formateurInfo.prenom}\n`
         csv += `Période: ${new Date(dateDebut).toLocaleDateString('fr-FR')} - ${new Date(dateFin).toLocaleDateString('fr-FR')}\n`
-        csv += `Statistiques: ${stats.presentsInterventions || 0} présent(e)s, ${stats.absentsInterventions || 0} absent(e)s, ${stats.nonDeclareInterventions || 0} non déclaré(e)s sur ${stats.totalInterventions || 0} interventions prévues\n\n`
+        const bureauText = formateurInfo.bureau ? ` (dont ${stats.bureauInterventions || 0} bureau)` : ''
+        csv += `Statistiques: ${stats.presentsInterventions || 0} présent(e)s${bureauText}, ${stats.nonDeclareInterventions || 0} non déclaré(e)s sur ${stats.totalInterventions || 0} interventions prévues\n\n`
 
         // Headers
         csv += headers.join(',') + '\n'
@@ -316,7 +396,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         <h3>Statistiques</h3>
                         <p>• Interventions prévues : ${stats.totalInterventions || 0}</p>
                         <p>• Présent : ${stats.presentsInterventions || 0}</p>
-                        <p>• Absent : ${stats.absentsInterventions || 0}</p>
+                        ${formateurInfo.bureau ? `<p>• Bureau : ${stats.bureauInterventions || 0}</p>` : ''}
                         <p>• Non déclaré : ${stats.nonDeclareInterventions || 0}</p>
                     </div>
 
@@ -340,7 +420,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                     <td>${intervention.lieu_prevu}</td>
                                     <td>${intervention.statut_prevu === 'affecte_coordo' ? 'Affecté coordo' :
                                          intervention.statut_prevu === 'dispo_except' ? 'Dispo except.' :
-                                         intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' : intervention.statut_prevu}</td>
+                                         intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' :
+                                         intervention.statut_prevu === 'bureau' ? 'Bureau' : intervention.statut_prevu}</td>
                                     <td class="${intervention.statut_final}">
                                         ${intervention.statut_final === 'present' ? '✓ Présent' :
                                           intervention.statut_final === 'absent' ? '✗ Absent' : '⚠ Non déclaré'}
@@ -711,19 +792,22 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                 </div>
                             </div>
 
-                            <div style={{
-                                backgroundColor: '#fef2f2',
-                                padding: '15px',
-                                borderRadius: '8px',
-                                textAlign: 'center'
-                            }}>
-                                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#991b1b' }}>
-                                    {stats.absentsInterventions}
+                            {/* Afficher l'encart Bureau uniquement si le formateur est membre du bureau */}
+                            {formateurs.find(f => f.id === formateurSelectionne)?.bureau && (
+                                <div style={{
+                                    backgroundColor: '#e0e7ff',
+                                    padding: '15px',
+                                    borderRadius: '8px',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4338ca' }}>
+                                        {stats.bureauInterventions}
+                                    </div>
+                                    <div style={{ fontSize: '14px', color: '#4338ca' }}>
+                                        Bureau
+                                    </div>
                                 </div>
-                                <div style={{ fontSize: '14px', color: '#991b1b' }}>
-                                    Absent
-                                </div>
-                            </div>
+                            )}
 
                             <div style={{
                                 backgroundColor: '#fef3c7',
@@ -958,15 +1042,18 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                     backgroundColor:
                                                         intervention.statut_prevu === 'affecte_coordo' ? '#dbeafe' :
                                                         intervention.statut_prevu === 'dispo_except' ? '#fef3c7' :
-                                                        intervention.statut_prevu === 'disponible_non_choisi' ? '#f3f4f6' : '#f3f4f6',
+                                                        intervention.statut_prevu === 'disponible_non_choisi' ? '#f3f4f6' :
+                                                        intervention.statut_prevu === 'bureau' ? '#e0e7ff' : '#f3f4f6',
                                                     color:
                                                         intervention.statut_prevu === 'affecte_coordo' ? '#1e40af' :
                                                         intervention.statut_prevu === 'dispo_except' ? '#92400e' :
-                                                        intervention.statut_prevu === 'disponible_non_choisi' ? '#6b7280' : '#6b7280'
+                                                        intervention.statut_prevu === 'disponible_non_choisi' ? '#6b7280' :
+                                                        intervention.statut_prevu === 'bureau' ? '#4338ca' : '#6b7280'
                                                 }}>
                                                     {intervention.statut_prevu === 'affecte_coordo' ? 'Affecté coordo' :
                                                      intervention.statut_prevu === 'dispo_except' ? 'Dispo except.' :
-                                                     intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' : intervention.statut_prevu}
+                                                     intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' :
+                                                     intervention.statut_prevu === 'bureau' ? 'Bureau' : intervention.statut_prevu}
                                                 </span>
                                             </td>
                                             <td style={{
@@ -974,21 +1061,101 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                 borderBottom: '1px solid #e5e7eb',
                                                 textAlign: 'center'
                                             }}>
-                                                <span style={{
-                                                    padding: '4px 8px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '12px',
-                                                    fontWeight: 'bold',
-                                                    backgroundColor:
-                                                        intervention.statut_final === 'present' ? '#dcfce7' :
-                                                        intervention.statut_final === 'absent' ? '#fef2f2' : '#fef3c7',
-                                                    color:
-                                                        intervention.statut_final === 'present' ? '#166534' :
-                                                        intervention.statut_final === 'absent' ? '#991b1b' : '#92400e'
-                                                }}>
-                                                    {intervention.statut_final === 'present' ? '✓ Présent' :
-                                                     intervention.statut_final === 'absent' ? '✗ Absent' : '⚠ Non déclaré'}
-                                                </span>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                    {/* Badge principal */}
+                                                    <span style={{
+                                                        padding: '4px 8px',
+                                                        borderRadius: '12px',
+                                                        fontSize: '12px',
+                                                        fontWeight: 'bold',
+                                                        backgroundColor:
+                                                            intervention.statut_final === 'present' ? '#dcfce7' :
+                                                            intervention.statut_final === 'absent' ? '#fef2f2' : '#fef3c7',
+                                                        color:
+                                                            intervention.statut_final === 'present' ? '#166534' :
+                                                            intervention.statut_final === 'absent' ? '#991b1b' : '#92400e'
+                                                    }}>
+                                                        {intervention.statut_final === 'present' ? '✓ Présent' :
+                                                         intervention.statut_final === 'absent' ? '✗ Absent' : '⚠ Non déclaré'}
+                                                    </span>
+
+                                                    {/* Boutons icônes pour changer le statut */}
+                                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                                        {/* Bouton Présent */}
+                                                        <button
+                                                            onClick={() => declarerPresenceAdmin(intervention, true)}
+                                                            disabled={!canEdit}
+                                                            title={!canEdit ? 'Mode consultation' : 'Déclarer présent'}
+                                                            style={{
+                                                                width: '24px',
+                                                                height: '24px',
+                                                                borderRadius: '6px',
+                                                                backgroundColor: !canEdit ? '#e5e7eb' : intervention.statut_final === 'present' ? '#10b981' : '#dcfce7',
+                                                                color: !canEdit ? '#9ca3af' : intervention.statut_final === 'present' ? 'white' : '#10b981',
+                                                                border: intervention.statut_final === 'present' ? 'none' : '1px solid #10b981',
+                                                                cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontSize: '14px',
+                                                                fontWeight: 'bold',
+                                                                padding: 0
+                                                            }}
+                                                        >
+                                                            ✓
+                                                        </button>
+
+                                                        {/* Bouton Absent */}
+                                                        <button
+                                                            onClick={() => declarerPresenceAdmin(intervention, false)}
+                                                            disabled={!canEdit}
+                                                            title={!canEdit ? 'Mode consultation' : 'Déclarer absent'}
+                                                            style={{
+                                                                width: '24px',
+                                                                height: '24px',
+                                                                borderRadius: '6px',
+                                                                backgroundColor: !canEdit ? '#e5e7eb' : intervention.statut_final === 'absent' ? '#ef4444' : '#fef2f2',
+                                                                color: !canEdit ? '#9ca3af' : intervention.statut_final === 'absent' ? 'white' : '#ef4444',
+                                                                border: intervention.statut_final === 'absent' ? 'none' : '1px solid #ef4444',
+                                                                cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontSize: '14px',
+                                                                fontWeight: 'bold',
+                                                                padding: 0
+                                                            }}
+                                                        >
+                                                            ✗
+                                                        </button>
+
+                                                        {/* Bouton Annuler (remettre en non déclaré) - uniquement si déjà déclaré */}
+                                                        {intervention.statut_final !== 'non_declare' && (
+                                                            <button
+                                                                onClick={() => declarerPresenceAdmin(intervention, null)}
+                                                                disabled={!canEdit}
+                                                                title={!canEdit ? 'Mode consultation' : 'Annuler et remettre en non déclaré'}
+                                                                style={{
+                                                                    width: '24px',
+                                                                    height: '24px',
+                                                                    borderRadius: '6px',
+                                                                    backgroundColor: !canEdit ? '#e5e7eb' : '#fef3c7',
+                                                                    color: !canEdit ? '#9ca3af' : '#92400e',
+                                                                    border: '1px solid #fbbf24',
+                                                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '14px',
+                                                                    fontWeight: 'bold',
+                                                                    padding: 0
+                                                                }}
+                                                            >
+                                                                ⚠
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td style={{
                                                 padding: '12px',

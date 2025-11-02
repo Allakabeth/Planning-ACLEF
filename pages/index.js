@@ -590,40 +590,37 @@ function Dashboard() {
                 👥
               </span>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '4px 8px',
-                    backgroundColor: '#f9fafb',
-                    borderRadius: '6px',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '13px'
-                  }}>
-                    <div style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
+                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                  let action, pageName;
+
+                  if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                    action = 'consulte';
+                    pageName = 'la messagerie';
+                  } else {
+                    action = 'consulte';
+                    pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                  }
+
+                  return (
+                    <div key={index} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 8px',
                       backgroundColor: '#10b981',
-                      flexShrink: 0
-                    }} />
-                    <span style={{ color: '#374151', fontWeight: '500' }}>
-                      {admin.name}
-                    </span>
-                    {admin.currentPage && admin.currentPage !== '/' && (
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#6b7280',
-                        backgroundColor: '#f3f4f6',
-                        padding: '1px 4px',
-                        borderRadius: '3px'
-                      }}>
-                        {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      color: 'white'
+                    }}>
+                      <span style={{ fontWeight: '600' }}>
+                        {admin.name}
                       </span>
-                    )}
-                  </div>
-                ))}
+                      <span style={{ fontWeight: '400' }}>
+                        {action} {pageName}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>

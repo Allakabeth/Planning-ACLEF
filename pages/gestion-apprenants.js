@@ -174,6 +174,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'HSP')
             } else if (filtreDispositif === 'OPCO') {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'OPCO')
+            } else if (filtreDispositif === 'CDV') {
+                apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'CDV')
             }
             
             // Filtre par lieu
@@ -746,7 +748,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
         const archives = apprenants.filter(a => a.archive).length
         const hsp = apprenants.filter(a => a.dispositif === 'HSP' && !a.archive).length
         const opco = apprenants.filter(a => a.dispositif === 'OPCO' && !a.archive).length
-        return { tous, actifs, archives, hsp, opco }
+        const cdv = apprenants.filter(a => a.dispositif === 'CDV' && !a.archive).length
+        return { tous, actifs, archives, hsp, opco, cdv }
     }
 
     const stats = compterApprenants()
@@ -1062,6 +1065,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 >
                                     <option value="HSP">HSP</option>
                                     <option value="OPCO">OPCO</option>
+                                    <option value="CDV">CDV</option>
                                 </select>
                             </div>
                         </div>
@@ -1229,6 +1233,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 >
                                     <option value="HSP">HSP</option>
                                     <option value="OPCO">OPCO</option>
+                                    <option value="CDV">CDV</option>
                                 </select>
                             </div>
                         </div>
@@ -1415,6 +1420,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 <option value="tous">Tous</option>
                                 <option value="HSP">HSP uniquement</option>
                                 <option value="OPCO">OPCO uniquement</option>
+                                <option value="CDV">CDV uniquement</option>
                             </select>
                         </div>
                         
@@ -1461,18 +1467,27 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                         }}>
                             HSP: {stats.hsp}
                         </span>
-                        <span style={{ 
-                            padding: '5px 12px', 
-                            backgroundColor: '#fef3c7', 
+                        <span style={{
+                            padding: '5px 12px',
+                            backgroundColor: '#fef3c7',
                             color: '#92400e',
                             borderRadius: '20px',
                             fontWeight: '500'
                         }}>
                             OPCO: {stats.opco}
                         </span>
-                        <span style={{ 
-                            padding: '5px 12px', 
-                            backgroundColor: '#f3f4f6', 
+                        <span style={{
+                            padding: '5px 12px',
+                            backgroundColor: '#e0e7ff',
+                            color: '#4338ca',
+                            borderRadius: '20px',
+                            fontWeight: '500'
+                        }}>
+                            CDV: {stats.cdv}
+                        </span>
+                        <span style={{
+                            padding: '5px 12px',
+                            backgroundColor: '#f3f4f6',
                             color: '#6b7280',
                             borderRadius: '20px',
                             fontWeight: '500'
@@ -1542,8 +1557,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                             borderRadius: '12px',
                                             fontSize: '11px',
                                             fontWeight: '500',
-                                            backgroundColor: apprenant.dispositif === 'HSP' ? '#dbeafe' : '#fef3c7',
-                                            color: apprenant.dispositif === 'HSP' ? '#1e40af' : '#92400e'
+                                            backgroundColor: apprenant.dispositif === 'HSP' ? '#dbeafe' : apprenant.dispositif === 'OPCO' ? '#fef3c7' : '#e0e7ff',
+                                            color: apprenant.dispositif === 'HSP' ? '#1e40af' : apprenant.dispositif === 'OPCO' ? '#92400e' : '#4338ca'
                                         }}>
                                             {apprenant.dispositif || 'HSP'}
                                         </span>

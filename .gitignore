@@ -144,3 +144,10 @@ pages/api/test-*.js
 # !jsconfig.json
 
 .vercel
+.mcp.json
+.mcp.json.backup*
+*.mjs
+*.sql
+tasks/
+*.png
+*.jpg
