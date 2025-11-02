@@ -171,9 +171,6 @@ const SkeletonAbsenceLoader = () => {
 function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
   const router = useRouter();
 
-  // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
-  const canEdit = priority === 1;
-
   const [loading, setLoading] = useState(true);
   const [apprenants, setApprenants] = useState([]);
   const [lieux, setLieux] = useState([]);
@@ -182,6 +179,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
   const [success, setSuccess] = useState('');
   const [filtreNom, setFiltreNom] = useState(''); // Filtre par nom d'apprenant
   const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
+  const [apprenantsVerrouilles, setApprenantsVerrouilles] = useState([]); // Apprenants en cours d'édition
 
   // État du formulaire
   const [formData, setFormData] = useState({
@@ -195,6 +193,10 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     motif: ''
   });
 
+  // 🎯 MODE ÉDITION : On peut modifier SI l'apprenant sélectionné n'est PAS verrouillé par un autre admin
+  const apprenantEstVerrouille = formData.apprenant_id && apprenantsVerrouilles.some(v => v.apprenant_id === formData.apprenant_id);
+  const canEdit = !apprenantEstVerrouille;
+
   useEffect(() => {
     loadData();
   }, []);
@@ -204,6 +206,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     if (!user) return;
 
     fetchConnectedAdmins();
+    fetchApprenantsVerrouilles();
 
     const channel = supabase
       .channel('admin_sessions_changes_absence_apprenant')
@@ -216,17 +219,34 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
         },
         () => {
           fetchConnectedAdmins();
+          fetchApprenantsVerrouilles();
         }
       )
       .subscribe();
 
     const refreshInterval = setInterval(() => {
       fetchConnectedAdmins();
+      fetchApprenantsVerrouilles();
     }, 30000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(refreshInterval);
+    };
+  }, [user, apprenants]);
+
+  // 🔓 Libérer le lock au unmount de la page
+  useEffect(() => {
+    return () => {
+      // Libérer le lock à la sortie
+      if (user?.email) {
+        supabase
+          .from('admin_sessions')
+          .update({ editing_apprenant_id: null })
+          .eq('admin_email', user.email)
+          .eq('is_active', true)
+          .then(() => console.log('🔓 Lock apprenant libéré'));
+      }
     };
   }, [user]);
 
@@ -340,6 +360,38 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     }
   };
 
+  // Fonction pour récupérer les apprenants en cours d'édition par d'autres admins
+  const fetchApprenantsVerrouilles = async () => {
+    try {
+      const { data: sessions, error } = await supabase
+        .from('admin_sessions')
+        .select('editing_apprenant_id, admin_email')
+        .eq('is_active', true)
+        .not('editing_apprenant_id', 'is', null)
+        .neq('admin_email', user?.email);
+
+      if (error) {
+        console.error('❌ Erreur fetchApprenantsVerrouilles:', error);
+        return;
+      }
+
+      // Enrichir avec les noms des apprenants
+      const enrichi = sessions.map(lock => {
+        const apprenant = apprenants.find(a => a.id === lock.editing_apprenant_id);
+        return {
+          apprenant_id: lock.editing_apprenant_id,
+          admin_email: lock.admin_email,
+          admin_name: lock.admin_email.split('@')[0].charAt(0).toUpperCase() + lock.admin_email.split('@')[0].slice(1),
+          apprenant_nom: apprenant ? `${apprenant.prenom} ${apprenant.nom}` : 'Inconnu'
+        };
+      });
+
+      setApprenantsVerrouilles(enrichi);
+    } catch (error) {
+      console.error('❌ Erreur fetchApprenantsVerrouilles:', error);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -396,12 +448,25 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = async (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+
+    // Mettre à jour le lock si c'est la sélection d'apprenant
+    if (name === 'apprenant_id') {
+      const { error } = await supabase
+        .from('admin_sessions')
+        .update({ editing_apprenant_id: value || null })
+        .eq('admin_email', user?.email)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('❌ Erreur update lock apprenant:', error);
+      }
+    }
   };
 
   const getTypeLabel = (type) => {
@@ -523,37 +588,49 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
 
         {/* Liste des admins connectés */}
         {connectedAdmins.length > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            flex: 1
-          }}>
-            {connectedAdmins.map((admin, index) => (
-              <div key={index} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '4px 12px',
-                backgroundColor: admin.priority === 1 ? '#d1fae5' : admin.priority === 2 ? '#fef3c7' : '#fee2e2',
-                borderRadius: '12px',
-                fontSize: '13px',
-                color: '#1f2937'
-              }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626'
-                }}></div>
-                <span style={{ fontWeight: '500' }}>{admin.name}</span>
-                <span style={{ color: '#6b7280' }}>
-                  {admin.currentPage === '/absence-apprenant'
-                    ? (admin.priority === 1 ? 'modifie' : 'consulte')
-                    : `sur ${admin.currentPage}`}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+            <span style={{
+              color: '#9ca3af',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>
+              👥
+            </span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                let badgeColor, action, pageName;
+
+                if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                  badgeColor = '#10b981';
+                  action = 'consulte';
+                  pageName = 'la messagerie';
+                } else {
+                  badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                  action = admin.priority === 1 ? 'modifie' : 'consulte';
+                  pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                }
+
+                return (
+                  <div key={index} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '4px 8px',
+                    backgroundColor: badgeColor,
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    color: 'white'
+                  }}>
+                    <span style={{ fontWeight: '600' }}>
+                      {admin.name}
+                    </span>
+                    <span style={{ fontWeight: '400' }}>
+                      {action} {pageName}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -618,6 +695,23 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
           ➕ Nouvelle absence/présence
         </h2>
 
+        {/* Bandeau d'avertissement si apprenant verrouillé */}
+        {formData.apprenant_id && apprenantsVerrouilles.some(v => v.apprenant_id === formData.apprenant_id) && (
+          <div style={{
+            backgroundColor: '#f59e0b',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            textAlign: 'center',
+            fontSize: '14px',
+            fontWeight: '600',
+            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+          }}>
+            ⚠️ {apprenantsVerrouilles.find(v => v.apprenant_id === formData.apprenant_id)?.admin_name} édite les changements de {apprenantsVerrouilles.find(v => v.apprenant_id === formData.apprenant_id)?.apprenant_nom}. Vous ne pouvez pas le modifier pour le moment.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
             {/* Type */}
@@ -671,11 +765,19 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                 }}
               >
                 <option value="">Sélectionner un apprenant</option>
-                {apprenants.map(apprenant => (
-                  <option key={apprenant.id} value={apprenant.id}>
-                    {apprenant.prenom} {apprenant.nom}
-                  </option>
-                ))}
+                {apprenants.map(apprenant => {
+                  const estVerrouille = apprenantsVerrouilles.some(v => v.apprenant_id === apprenant.id);
+                  return (
+                    <option
+                      key={apprenant.id}
+                      value={apprenant.id}
+                      disabled={estVerrouille}
+                    >
+                      {apprenant.prenom} {apprenant.nom}
+                      {estVerrouille && ' (En cours d\'édition)'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
