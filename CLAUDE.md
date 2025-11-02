@@ -27,6 +27,8 @@ IMPORTANTE : Cette app FONCTIONNE. Ne pas tout refaire.
 
 **7. \*\*Toujours lire GUIDE-MCP-SUPABASE.md avant de travailler sur la bdd\*\***
 
+**8. \*\* Toujours aller voir dans le fichier .mcp.json si je parle de serveur MCP\*\***
+
 
 
 TECHNOLOGIES UTILISÉES

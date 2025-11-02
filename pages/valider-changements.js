@@ -361,6 +361,7 @@ function ValiderChangements({ user, logout, inactivityTime, priority }) {
         messagesEnvoyes: 0,
         commandementsEnvoyes: 0
     });
+    const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     const router = useRouter();
 
     // ✅ FONCTION: Convertir date ISO → format français
@@ -369,6 +370,46 @@ function ValiderChangements({ user, logout, inactivityTime, priority }) {
         const [year, month, day] = dateISO.split('-')
         return `${day}-${month}-${year}`
     }
+
+    // Fonction pour récupérer la liste des admins connectés
+    const fetchConnectedAdmins = async () => {
+        try {
+            // Récupérer les sessions actives avec l'email directement
+            const { data: sessions, error: sessionsError } = await supabase
+                .from('admin_sessions')
+                .select('admin_user_id, admin_email, current_page, page_priority, heartbeat')
+                .eq('is_active', true)
+                .order('heartbeat', { ascending: false });
+
+            if (sessionsError) {
+                console.error('❌ Erreur récupération sessions:', sessionsError);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                console.log('👥 Aucun admin connecté');
+                setConnectedAdmins([]);
+                return;
+            }
+
+            // Formater les données pour l'affichage - ne garder que ceux avec email valide
+            const adminsFormatted = sessions
+                .filter(session => session.admin_email) // Filtrer les sessions sans email
+                .map(session => ({
+                    email: session.admin_email,
+                    name: session.admin_email.split('@')[0].charAt(0).toUpperCase() + session.admin_email.split('@')[0].slice(1),
+                    currentPage: session.current_page,
+                    priority: session.page_priority,
+                    lastActive: session.heartbeat
+                }));
+
+            setConnectedAdmins(adminsFormatted);
+            console.log('👥 Admins connectés:', adminsFormatted);
+
+        } catch (error) {
+            console.error('❌ Erreur fetchConnectedAdmins:', error);
+        }
+    };
 
     useEffect(() => {
         loadFormateurs();
@@ -389,6 +430,41 @@ function ValiderChangements({ user, logout, inactivityTime, priority }) {
             setFormateurSelectionne(formateur);
         }
     }, [router.query, formateurs, formateurSelectionne]);
+
+    // 👥 Charger et écouter les admins connectés en temps réel
+    useEffect(() => {
+        if (!user) return;
+
+        // Charger la liste initiale
+        fetchConnectedAdmins();
+
+        // Écouter les changements en temps réel
+        const channel = supabase
+            .channel('admin_sessions_changes_validation')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'admin_sessions'
+                },
+                (payload) => {
+                    console.log('🔄 Changement admin_sessions détecté, refresh liste admins');
+                    fetchConnectedAdmins();
+                }
+            )
+            .subscribe();
+
+        // Refresh périodique toutes les 30 secondes
+        const refreshInterval = setInterval(() => {
+            fetchConnectedAdmins();
+        }, 30000);
+
+        return () => {
+            supabase.removeChannel(channel);
+            clearInterval(refreshInterval);
+        };
+    }, [user]);
 
     // 👑 NOUVELLE FONCTION ROI - COMMUNICATION AVEC SYSTÈMES
     const commanderSystemes = (action, formateurId, dateStr, details = {}) => {
@@ -1058,7 +1134,8 @@ ${messageTransformation}
                 marginBottom: '20px',
                 boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                gap: '12px'
             }}>
                 {priority && priority < 999 && (
                     <div style={{
@@ -1076,6 +1153,65 @@ ${messageTransformation}
                     }}>
                         {priority}
                     </div>
+                )}
+
+                {/* Liste des autres admins connectés */}
+                {connectedAdmins.filter(admin => admin.email !== user?.email).length > 0 && (
+                    <>
+                        <div style={{
+                            width: '1px',
+                            height: '24px',
+                            backgroundColor: '#e5e7eb'
+                        }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    // Pour l'index (messagerie), toujours afficher en vert "consulte la messagerie"
+                                    let badgeColor, action, pageName;
+
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        // Couleur du badge selon la priorité de l'admin sur SA page
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        // Action selon la priorité
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        // Nom de la page formaté
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            color: 'white'
+                                        }}>
+                                            <span style={{ fontWeight: '600' }}>
+                                                {admin.name}
+                                            </span>
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>
                 )}
             </div>
 

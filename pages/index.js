@@ -338,38 +338,6 @@ function Dashboard() {
       setInactivityTime(0) // Reset du compteur
       console.log('🟢 Activité détectée, gardien éveillé')
     }
-    
-    // 🚪 DÉCONNEXION FORCÉE À LA FERMETURE (mais pas au refresh)
-    const handlePageUnload = async (e) => {
-      try {
-        // Distinguer refresh (F5) vs fermeture réelle de l'onglet
-        const isRefresh = e.persisted || (window.performance && window.performance.navigation.type === 1)
-        
-        if (isRefresh) {
-          console.log('🔄 Refresh détecté - Session préservée')
-          return // Ne pas désactiver la session sur refresh
-        }
-        
-        console.log('🚪 Fermeture réelle détectée - Déconnexion forcée...')
-        
-        const { data: { user: currentUser } } = await supabase.auth.getUser()
-        if (currentUser) {
-          // Désactiver la session seulement en cas de fermeture réelle
-          await supabase
-            .from('admin_sessions')
-            .update({ is_active: false })
-            .eq('admin_user_id', currentUser.id)
-            .eq('is_active', true)
-          
-          console.log('✅ Session désactivée à la fermeture réelle')
-        }
-      } catch (error) {
-        console.error('Erreur déconnexion fermeture:', error)
-      }
-    }
-
-    // Écouter seulement la fermeture réelle (pas beforeunload qui se déclenche au refresh)
-    window.addEventListener('unload', handlePageUnload)
 
     // Événements d'activité
     const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
@@ -444,9 +412,6 @@ function Dashboard() {
       activityEvents.forEach(event => {
         document.removeEventListener(event, resetActivity, true)
       })
-      
-      // Nettoyer les événements de fermeture
-      window.removeEventListener('unload', handlePageUnload)
     }
   }, [router, sessionValid])
 
