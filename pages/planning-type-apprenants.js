@@ -6,9 +6,6 @@ import { withAuthAdmin } from '../components/withAuthAdmin'
 function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
 
-    // 🎯 MODE ÉDITION : Seulement le premier admin (vert) peut modifier
-    const canEdit = priority === 1;
-
     // États principaux
     const [apprenants, setApprenants] = useState([])
     const [apprenantSelectionne, setApprenantSelectionne] = useState(null)
@@ -17,6 +14,11 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState(null)
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
+    const [apprenantsVerrouilles, setApprenantsVerrouilles] = useState([]); // Apprenants en cours d'édition
+
+    // 🎯 MODE ÉDITION : On peut modifier SI l'apprenant n'est PAS verrouillé par un autre admin
+    const apprenantEstVerrouille = apprenantSelectionne && apprenantsVerrouilles.some(v => v.apprenant_id === apprenantSelectionne.id);
+    const canEdit = !apprenantEstVerrouille;
 
     // Constantes
     const jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
@@ -44,6 +46,7 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
         if (!user) return;
 
         fetchConnectedAdmins();
+        fetchApprenantsVerrouilles();
 
         const channel = supabase
             .channel('admin_sessions_changes_planning_type_apprenants')
@@ -56,19 +59,21 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                 },
                 () => {
                     fetchConnectedAdmins();
+                    fetchApprenantsVerrouilles();
                 }
             )
             .subscribe();
 
         const refreshInterval = setInterval(() => {
             fetchConnectedAdmins();
+            fetchApprenantsVerrouilles();
         }, 30000);
 
         return () => {
             supabase.removeChannel(channel);
             clearInterval(refreshInterval);
         };
-    }, [user]);
+    }, [user, apprenants]);
 
     // 🔄 Recharger les données quand la priorité change
     useEffect(() => {
@@ -99,6 +104,21 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
             supabase.removeChannel(channel);
         };
     }, [user, apprenantSelectionne])
+
+    // 🔓 Libérer le lock au unmount de la page
+    useEffect(() => {
+        return () => {
+            // Libérer le lock à la sortie
+            if (user?.email) {
+                supabase
+                    .from('admin_sessions')
+                    .update({ editing_apprenant_id: null })
+                    .eq('admin_email', user.email)
+                    .eq('is_active', true)
+                    .then(() => console.log('🔓 Lock apprenant libéré'));
+            }
+        };
+    }, [user]);
 
     // Fonction pour récupérer les apprenants
     const fetchApprenants = async () => {
@@ -190,6 +210,38 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
         }
     };
 
+    // Fonction pour récupérer les apprenants en cours d'édition par d'autres admins
+    const fetchApprenantsVerrouilles = async () => {
+        try {
+            const { data: sessions, error } = await supabase
+                .from('admin_sessions')
+                .select('editing_apprenant_id, admin_email')
+                .eq('is_active', true)
+                .not('editing_apprenant_id', 'is', null)
+                .neq('admin_email', user?.email);
+
+            if (error) {
+                console.error('❌ Erreur fetchApprenantsVerrouilles:', error);
+                return;
+            }
+
+            // Enrichir avec les noms des apprenants
+            const enrichi = sessions.map(lock => {
+                const apprenant = apprenants.find(a => a.id === lock.editing_apprenant_id);
+                return {
+                    apprenant_id: lock.editing_apprenant_id,
+                    admin_email: lock.admin_email,
+                    admin_name: lock.admin_email.split('@')[0].charAt(0).toUpperCase() + lock.admin_email.split('@')[0].slice(1),
+                    apprenant_nom: apprenant ? `${apprenant.prenom} ${apprenant.nom}` : 'Inconnu'
+                };
+            });
+
+            setApprenantsVerrouilles(enrichi);
+        } catch (error) {
+            console.error('❌ Erreur fetchApprenantsVerrouilles:', error);
+        }
+    };
+
     // Fonction pour charger le planning existant d'un apprenant
     const fetchPlanningType = async (apprenantId) => {
         if (!apprenantId) return
@@ -232,11 +284,22 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     }
 
     // Gestion changement d'apprenant sélectionné
-    const handleApprenantChange = (apprenantId) => {
+    const handleApprenantChange = async (apprenantId) => {
         const apprenant = apprenants.find(a => a.id === apprenantId)
         setApprenantSelectionne(apprenant)
         setPlanningType({}) // Reset grille
         setMessage(null)
+
+        // Mettre à jour le lock dans admin_sessions
+        const { error } = await supabase
+            .from('admin_sessions')
+            .update({ editing_apprenant_id: apprenantId || null })
+            .eq('admin_email', user?.email)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('❌ Erreur update lock apprenant:', error);
+        }
 
         if (apprenant) {
             fetchPlanningType(apprenant.id)
@@ -701,40 +764,39 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                                     👥
                                 </span>
                                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                    {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => (
-                                        <div key={index} style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '4px 8px',
-                                            backgroundColor: '#f9fafb',
-                                            borderRadius: '6px',
-                                            border: '1px solid #e5e7eb',
-                                            fontSize: '13px'
-                                        }}>
-                                            <div style={{
-                                                width: '6px',
-                                                height: '6px',
-                                                borderRadius: '50%',
-                                                backgroundColor: '#10b981',
-                                                flexShrink: 0
-                                            }} />
-                                            <span style={{ color: '#374151', fontWeight: '500' }}>
-                                                {admin.name}
-                                            </span>
-                                            {admin.currentPage && admin.currentPage !== '/' && (
-                                                <span style={{
-                                                    fontSize: '11px',
-                                                    color: '#6b7280',
-                                                    backgroundColor: '#f3f4f6',
-                                                    padding: '1px 4px',
-                                                    borderRadius: '3px'
-                                                }}>
-                                                    {admin.priority === 1 ? 'modifie' : 'consulte'} {admin.currentPage.replace('/', '').replace(/-/g, ' ')}
+                                    {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                        let badgeColor, action, pageName;
+
+                                        if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                            badgeColor = '#10b981';
+                                            action = 'consulte';
+                                            pageName = 'la messagerie';
+                                        } else {
+                                            badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                            action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                            pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                        }
+
+                                        return (
+                                            <div key={index} style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 8px',
+                                                backgroundColor: badgeColor,
+                                                borderRadius: '6px',
+                                                fontSize: '13px',
+                                                color: 'white'
+                                            }}>
+                                                <span style={{ fontWeight: '600' }}>
+                                                    {admin.name}
                                                 </span>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <span style={{ fontWeight: '400' }}>
+                                                    {action} {pageName}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </>
@@ -746,22 +808,47 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                         Planning Type Apprenants
                     </h1>
 
+                    {/* Bandeau d'avertissement si apprenant verrouillé */}
+                    {apprenantSelectionne && apprenantsVerrouilles.some(v => v.apprenant_id === apprenantSelectionne.id) && (
+                        <div style={{
+                            backgroundColor: '#f59e0b',
+                            color: 'white',
+                            padding: '16px 24px',
+                            borderRadius: '8px',
+                            marginBottom: '20px',
+                            textAlign: 'center',
+                            fontSize: '16px',
+                            fontWeight: '600',
+                            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+                        }}>
+                            ⚠️ {apprenantsVerrouilles.find(v => v.apprenant_id === apprenantSelectionne.id)?.admin_name} édite les changements de {apprenantSelectionne.prenom} {apprenantSelectionne.nom}. Vous ne pouvez pas le modifier pour le moment.
+                        </div>
+                    )}
+
                     {/* Sélecteur d'apprenant */}
                     <div className="selecteur-section">
                         <label className="selecteur-label">
                             Sélectionner un apprenant :
                         </label>
-                        <select 
+                        <select
                             value={apprenantSelectionne?.id || ''}
                             onChange={(e) => handleApprenantChange(e.target.value)}
                             className="select-apprenant"
                         >
                             <option value="">-- Choisir un apprenant --</option>
-                            {apprenants.map(apprenant => (
-                                <option key={apprenant.id} value={apprenant.id}>
-                                    {apprenant.prenom} {apprenant.nom}
-                                </option>
-                            ))}
+                            {apprenants.map(apprenant => {
+                                const estVerrouille = apprenantsVerrouilles.some(v => v.apprenant_id === apprenant.id);
+                                return (
+                                    <option
+                                        key={apprenant.id}
+                                        value={apprenant.id}
+                                        disabled={estVerrouille}
+                                    >
+                                        {apprenant.prenom} {apprenant.nom}
+                                        {estVerrouille && ' (En cours d\'édition)'}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
 
