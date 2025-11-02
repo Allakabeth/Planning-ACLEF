@@ -479,50 +479,49 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
                     {/* Liste des admins connectés */}
                     {connectedAdmins.length > 0 && (
-                        <div style={{
-                            display: 'flex',
-                            gap: '10px',
-                            alignItems: 'center',
-                            flexWrap: 'wrap'
-                        }}>
-                            {connectedAdmins.map((admin, index) => {
-                                const isOnThisPage = admin.currentPage === 'gestion-absences-formateur';
-                                const verb = isOnThisPage ? (admin.priority === 1 ? 'modifie' : 'consulte') : 'autre page';
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
 
-                                return (
-                                    <div key={index} style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '4px 10px',
-                                        borderRadius: '12px',
-                                        backgroundColor: isOnThisPage ? '#f0fdf4' : '#f9fafb',
-                                        border: `1px solid ${isOnThisPage ? '#86efac' : '#e5e7eb'}`
-                                    }}>
-                                        <div style={{
-                                            width: '20px',
-                                            height: '20px',
-                                            borderRadius: '50%',
-                                            backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
-                                            color: 'white',
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold'
-                                        }}>
-                                            {admin.priority}
-                                        </div>
-                                        <span style={{
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
                                             fontSize: '13px',
-                                            color: isOnThisPage ? '#059669' : '#6b7280',
-                                            fontWeight: isOnThisPage ? '600' : '400'
+                                            color: 'white'
                                         }}>
-                                            {admin.name} {verb}
-                                        </span>
-                                    </div>
-                                );
-                            })}
+                                            <span style={{ fontWeight: '600' }}>
+                                                {admin.name}
+                                            </span>
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>

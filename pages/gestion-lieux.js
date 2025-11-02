@@ -430,57 +430,49 @@ function GestionLieux({ user, logout, inactivityTime, priority }) {
                             backgroundColor: '#e5e7eb'
                         }} />
 
-                        <div style={{
-                            display: 'flex',
-                            gap: '12px',
-                            alignItems: 'center',
-                            flex: 1
-                        }}>
-                            {connectedAdmins.map((admin, index) => {
-                                const isOnThisPage = admin.currentPage === 'Gestion Lieux';
-                                const verb = admin.priority === 1 ? 'modifie' : 'consulte';
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
 
-                                return (
-                                    <div key={index} style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        backgroundColor: isOnThisPage ? '#f0f9ff' : 'transparent'
-                                    }}>
-                                        <div style={{
-                                            width: '24px',
-                                            height: '24px',
-                                            borderRadius: '50%',
-                                            backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
-                                            color: 'white',
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold'
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            color: 'white'
                                         }}>
-                                            {admin.priority}
-                                        </div>
-                                        <div style={{ fontSize: '13px' }}>
-                                            <span style={{ fontWeight: '500', color: '#1f2937' }}>
+                                            <span style={{ fontWeight: '600' }}>
                                                 {admin.name}
                                             </span>
-                                            {isOnThisPage && (
-                                                <span style={{ color: '#6b7280', marginLeft: '4px' }}>
-                                                    {verb}
-                                                </span>
-                                            )}
-                                            {!isOnThisPage && admin.currentPage && (
-                                                <span style={{ color: '#9ca3af', marginLeft: '4px', fontSize: '12px' }}>
-                                                    ({admin.currentPage})
-                                                </span>
-                                            )}
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </>
                 )}

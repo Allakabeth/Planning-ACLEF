@@ -402,50 +402,49 @@ function GestionSalaries({ user, logout, inactivityTime, priority }) {
                             backgroundColor: '#e5e7eb'
                         }} />
 
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '10px',
-                            flex: 1
-                        }}>
-                            {connectedAdmins.map((admin, index) => {
-                                const isOnThisPage = admin.currentPage === 'gestion-salaries';
-                                const verb = admin.priority === 1 ? 'modifie' : 'consulte';
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
 
-                                return (
-                                    <div
-                                        key={index}
-                                        style={{
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
+
+                                    return (
+                                        <div key={index} style={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '8px',
-                                            padding: '5px 12px',
-                                            backgroundColor: isOnThisPage ? '#f3f4f6' : 'transparent',
-                                            borderRadius: '20px',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
                                             fontSize: '13px',
-                                            color: '#4b5563'
-                                        }}
-                                    >
-                                        <div style={{
-                                            width: '20px',
-                                            height: '20px',
-                                            borderRadius: '50%',
-                                            backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
-                                            color: 'white',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            fontSize: '11px',
-                                            fontWeight: 'bold'
+                                            color: 'white'
                                         }}>
-                                            {admin.priority}
+                                            <span style={{ fontWeight: '600' }}>
+                                                {admin.name}
+                                            </span>
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
+                                            </span>
                                         </div>
-                                        <span style={{ fontWeight: isOnThisPage ? '600' : '400' }}>
-                                            {admin.name} {isOnThisPage && `${verb} cette page`}
-                                        </span>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </>
                 )}
