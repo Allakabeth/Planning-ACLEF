@@ -21,6 +21,7 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
     const [absencesEnAttente, setAbsencesEnAttente] = useState([])
     const [isValidating, setIsValidating] = useState(false)
     const [connectedAdmins, setConnectedAdmins] = useState([]) // Liste des admins connectés
+    const [formateursVerrouilles, setFormateursVerrouilles] = useState([]) // Liste des formateurs verrouillés par d'autres admins
 
     // ✅ FONCTION: Convertir date ISO → format français
     const formatDateFr = (dateISO) => {
@@ -69,6 +70,45 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
         }
     };
 
+    // 🔒 FONCTION: Récupérer les formateurs verrouillés par d'autres admins
+    const fetchFormateursVerrouilles = async () => {
+        try {
+            const { data: sessions, error } = await supabase
+                .from('admin_sessions')
+                .select('editing_formateur_id, admin_email')
+                .eq('is_active', true)
+                .not('editing_formateur_id', 'is', null)
+                .neq('admin_email', user?.email);
+
+            if (error) {
+                console.error('❌ Erreur récupération formateurs verrouillés:', error);
+                return;
+            }
+
+            if (!sessions || sessions.length === 0) {
+                setFormateursVerrouilles([]);
+                return;
+            }
+
+            // Enrichir avec les noms des formateurs et admins
+            const enrichi = sessions.map(lock => {
+                const formateur = formateurs.find(f => f.id === lock.editing_formateur_id);
+                return {
+                    formateur_id: lock.editing_formateur_id,
+                    admin_email: lock.admin_email,
+                    admin_name: lock.admin_email.split('@')[0].charAt(0).toUpperCase() + lock.admin_email.split('@')[0].slice(1),
+                    formateur_nom: formateur ? `${formateur.prenom} ${formateur.nom}` : 'Inconnu'
+                };
+            });
+
+            setFormateursVerrouilles(enrichi);
+            console.log('🔒 Formateurs verrouillés:', enrichi);
+
+        } catch (error) {
+            console.error('❌ Erreur fetchFormateursVerrouilles:', error);
+        }
+    };
+
     // Configuration des onglets
     const onglets = [
         { 
@@ -107,6 +147,7 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
 
         // Charger la liste initiale
         fetchConnectedAdmins();
+        fetchFormateursVerrouilles();
 
         // Écouter les changements en temps réel
         const channel = supabase
@@ -121,6 +162,7 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
                 (payload) => {
                     console.log('🔄 Changement admin_sessions détecté, refresh liste admins');
                     fetchConnectedAdmins();
+                    fetchFormateursVerrouilles();
                 }
             )
             .subscribe();
@@ -128,11 +170,27 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
         // Refresh périodique toutes les 30 secondes
         const refreshInterval = setInterval(() => {
             fetchConnectedAdmins();
+            fetchFormateursVerrouilles();
         }, 30000);
 
         return () => {
             supabase.removeChannel(channel);
             clearInterval(refreshInterval);
+        };
+    }, [user, formateurs]);
+
+    // 🔒 Cleanup: Libérer le verrouillage formateur au unmount
+    useEffect(() => {
+        return () => {
+            if (user?.email) {
+                // Libérer le lock à la sortie de la page
+                supabase
+                    .from('admin_sessions')
+                    .update({ editing_formateur_id: null })
+                    .eq('admin_email', user.email)
+                    .eq('is_active', true)
+                    .then(() => console.log('🔓 Lock formateur libéré au unmount'));
+            }
         };
     }, [user]);
 
@@ -180,12 +238,29 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
         }
     }
 
-    const handleFormateurChange = (formateurId) => {
+    const handleFormateurChange = async (formateurId) => {
         const formateur = formateurs.find(f => f.id === formateurId)
         setFormateurSelectionne(formateur)
         setMessage('')
         setLogs([])
         setAbsencesEnAttente([])
+
+        // 🔒 Mettre à jour le lock dans admin_sessions
+        try {
+            const { error } = await supabase
+                .from('admin_sessions')
+                .update({ editing_formateur_id: formateurId || null })
+                .eq('admin_email', user?.email)
+                .eq('is_active', true);
+
+            if (error) {
+                console.error('❌ Erreur update lock formateur:', error);
+            } else {
+                console.log(`🔒 Lock formateur mis à jour: ${formateurId || 'libéré'}`);
+            }
+        } catch (error) {
+            console.error('❌ Erreur handleFormateurChange:', error);
+        }
 
         if (formateur) {
             console.log(`👤 Formateur sélectionné: ${formateur.prenom} ${formateur.nom}`)
@@ -975,6 +1050,31 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
                 </div>
             </div>
 
+            {/* Bandeau avertissement formateur verrouillé */}
+            {formateurSelectionne && formateursVerrouilles.some(v => v.formateur_id === formateurSelectionne.id) && (
+                <div style={{
+                    maxWidth: '1200px',
+                    margin: '0 auto 20px',
+                    backgroundColor: '#fef3c7',
+                    borderLeft: '4px solid #f59e0b',
+                    borderRadius: '8px',
+                    padding: '12px 20px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                }}>
+                    <span style={{ fontSize: '20px' }}>⚠️</span>
+                    <span style={{
+                        color: '#92400e',
+                        fontSize: '14px',
+                        fontWeight: '600'
+                    }}>
+                        {formateursVerrouilles.find(v => v.formateur_id === formateurSelectionne.id)?.admin_name} édite les données de {formateursVerrouilles.find(v => v.formateur_id === formateurSelectionne.id)?.formateur_nom}. Vous ne pouvez pas le modifier pour le moment.
+                    </span>
+                </div>
+            )}
+
             {/* Bandeau blanc avec status */}
             <div className="no-print" style={{
                 maxWidth: '1200px',
@@ -1126,11 +1226,19 @@ function PriseControleFormateur({ user, logout, inactivityTime, priority }) {
                             }}
                         >
                             <option value="">-- Choisir un formateur --</option>
-                            {formateurs.map(formateur => (
-                                <option key={formateur.id} value={formateur.id}>
-                                    {formateur.prenom} {formateur.nom}
-                                </option>
-                            ))}
+                            {formateurs.map(formateur => {
+                                const estVerrouille = formateursVerrouilles.some(v => v.formateur_id === formateur.id);
+                                return (
+                                    <option
+                                        key={formateur.id}
+                                        value={formateur.id}
+                                        disabled={estVerrouille}
+                                    >
+                                        {formateur.prenom} {formateur.nom}
+                                        {estVerrouille && ' (En cours d\'édition)'}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
 
