@@ -877,58 +877,48 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
 
                         {/* Liste des admins connectés */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                            {connectedAdmins.length > 0 ? (
-                                connectedAdmins.map((admin, index) => {
-                                    const isOnThisPage = admin.currentPage === 'gestion-apprenants';
-                                    const verb = isOnThisPage ? 'modifie' : 'consulte';
-                                    const pageDisplay = isOnThisPage ? 'cette page' : admin.currentPage || 'autre page';
+                            <span style={{
+                                color: '#9ca3af',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                            }}>
+                                👥
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {connectedAdmins.filter(admin => admin.email !== user?.email).map((admin, index) => {
+                                    let badgeColor, action, pageName;
+
+                                    if (!admin.currentPage || admin.currentPage === '/' || admin.currentPage === '') {
+                                        badgeColor = '#10b981';
+                                        action = 'consulte';
+                                        pageName = 'la messagerie';
+                                    } else {
+                                        badgeColor = admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#ef4444';
+                                        action = admin.priority === 1 ? 'modifie' : 'consulte';
+                                        pageName = admin.currentPage.replace('/', '').replace(/-/g, ' ');
+                                    }
 
                                     return (
-                                        <div
-                                            key={admin.email}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                padding: '4px 10px',
-                                                borderRadius: '20px',
-                                                backgroundColor: admin.priority === 1 ? '#d1fae5' : admin.priority === 2 ? '#fef3c7' : '#fee2e2',
-                                                fontSize: '13px'
-                                            }}
-                                        >
-                                            <div style={{
-                                                width: '24px',
-                                                height: '24px',
-                                                borderRadius: '50%',
-                                                backgroundColor: admin.priority === 1 ? '#10b981' : admin.priority === 2 ? '#f59e0b' : '#dc2626',
-                                                color: 'white',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: '12px',
-                                                fontWeight: 'bold',
-                                                flexShrink: 0
-                                            }}>
-                                                {admin.priority}
-                                            </div>
-                                            <span style={{
-                                                fontWeight: '600',
-                                                color: admin.priority === 1 ? '#065f46' : admin.priority === 2 ? '#92400e' : '#991b1b'
-                                            }}>
+                                        <div key={index} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '4px 8px',
+                                            backgroundColor: badgeColor,
+                                            borderRadius: '6px',
+                                            fontSize: '13px',
+                                            color: 'white'
+                                        }}>
+                                            <span style={{ fontWeight: '600' }}>
                                                 {admin.name}
                                             </span>
-                                            <span style={{
-                                                color: admin.priority === 1 ? '#047857' : admin.priority === 2 ? '#b45309' : '#b91c1c',
-                                                fontSize: '12px'
-                                            }}>
-                                                {verb} {pageDisplay}
+                                            <span style={{ fontWeight: '400' }}>
+                                                {action} {pageName}
                                             </span>
                                         </div>
                                     );
-                                })
-                            ) : (
-                                <span style={{ fontSize: '13px', color: '#9ca3af' }}>Aucun autre admin connecté</span>
-                            )}
+                                })}
+                            </div>
                         </div>
                     </>
                 )}
@@ -948,6 +938,23 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                     Gérez les apprenants et leur dispositif de financement
                 </p>
             </div>
+
+            {/* Bandeau de verrouillage si un admin vert est sur la page */}
+            {!canEdit && connectedAdmins.some(admin => admin.priority === 1 && admin.currentPage === '/gestion-apprenants') && (
+                <div style={{
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    padding: '16px 24px',
+                    borderRadius: '8px',
+                    marginBottom: '20px',
+                    textAlign: 'center',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                }}>
+                    🚫 Page verrouillée. {connectedAdmins.find(admin => admin.priority === 1 && admin.currentPage === '/gestion-apprenants')?.name} modifie actuellement cette page. Toutes les actions sont désactivées jusqu'à son départ.
+                </div>
+            )}
 
             {/* Message de notification */}
             {message && (
