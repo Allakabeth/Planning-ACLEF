@@ -301,6 +301,7 @@ export default function MaPresence() {
             // Vérifications avant enregistrement
             const warnings = []
             const erreurs = []
+            const presencesBureau = []
 
             for (const creneau of creneaux) {
                 const estPresent = presencesLocales[creneau]
@@ -316,6 +317,7 @@ export default function MaPresence() {
                     } else {
                         // Formateur a un bureau => OK, intervention Bureau
                         console.log(`🏢 ${creneau}: Intervention Bureau autorisée`)
+                        presencesBureau.push(creneau)
                     }
                 } else if (estPresent && interventionPrevue) {
                     // Formateur dit présent et était effectivement prévu
@@ -377,10 +379,19 @@ export default function MaPresence() {
                 }
             }
 
-            setMessage('✅ Présences enregistrées avec succès !')
+            // Message de confirmation adapté
+            if (presencesBureau.length > 0) {
+                const creneauxBureau = presencesBureau.join(' et ')
+                setMessage(`bureau_${creneauxBureau}`) // Message spécial pour le popup Bureau
+            } else {
+                setMessage('✅ Présences enregistrées avec succès !')
+            }
+
             // Recharger les données pour synchroniser
             await chargerDonnees()
-            setTimeout(() => setMessage(''), 3000)
+
+            // Fermer le message après 5 secondes (plus long pour le popup Bureau)
+            setTimeout(() => setMessage(''), presencesBureau.length > 0 ? 5000 : 3000)
 
         } catch (error) {
             console.error('Erreur validation présences:', error)
@@ -614,6 +625,65 @@ export default function MaPresence() {
                                         }}
                                     >
                                         J'ai compris
+                                    </button>
+                                </div>
+                            </div>
+                        ) : message.startsWith('bureau_') ? (
+                            // Popup modal pour confirmation présence Bureau
+                            <div style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 9999
+                            }}>
+                                <div style={{
+                                    backgroundColor: 'white',
+                                    padding: '30px',
+                                    borderRadius: '16px',
+                                    maxWidth: '90%',
+                                    width: '400px',
+                                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{
+                                        fontSize: '48px',
+                                        marginBottom: '15px'
+                                    }}>🏢</div>
+                                    <h2 style={{
+                                        fontSize: '20px',
+                                        fontWeight: 'bold',
+                                        color: '#059669',
+                                        marginBottom: '15px'
+                                    }}>Présence Bureau enregistrée</h2>
+                                    <p style={{
+                                        fontSize: '16px',
+                                        color: '#374151',
+                                        marginBottom: '10px',
+                                        lineHeight: '1.5'
+                                    }}>
+                                        Votre présence a été enregistrée pour un temps de présence <strong>Bureau</strong>
+                                        {message.replace('bureau_', '') && ` (${message.replace('bureau_', '')})`}.
+                                    </p>
+                                    <button
+                                        onClick={() => setMessage('')}
+                                        style={{
+                                            padding: '12px 30px',
+                                            backgroundColor: '#059669',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            fontSize: '16px',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Valider
                                     </button>
                                 </div>
                             </div>

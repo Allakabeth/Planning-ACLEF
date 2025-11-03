@@ -31,7 +31,7 @@ export default async function handler(req, res) {
         // Vérifier que le formateur existe toujours et est actif
         const { data: formateur, error: dbError } = await supabase
             .from('users')
-            .select('id, nom, prenom, email, role, archive, must_change_password, password_hash')
+            .select('id, nom, prenom, email, role, bureau, archive, must_change_password, password_hash')
             .eq('id', decoded.id)
             .eq('role', 'formateur')
             .eq('archive', false)
@@ -54,6 +54,7 @@ export default async function handler(req, res) {
                 prenom: formateur.prenom,
                 email: formateur.email,
                 role: 'formateur',
+                bureau: formateur.bureau || false,
                 mustChangePassword: formateur.must_change_password === true || !(formateur.password_hash?.startsWith('$2b$') || formateur.password_hash?.startsWith('$2a$') || formateur.password_hash?.startsWith('$2y$'))
             },
             token: {

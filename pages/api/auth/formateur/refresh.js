@@ -66,6 +66,7 @@ export default async function handler(req, res) {
                 prenom: user.prenom,
                 email: user.email,
                 role: 'formateur',
+                bureau: user.bureau || false,
                 mustChangePassword: user.must_change_password === true || !(user.password_hash?.startsWith('$2b$') || user.password_hash?.startsWith('$2a$') || user.password_hash?.startsWith('$2y$'))
             }
         })

@@ -122,6 +122,7 @@ export default async function handler(req, res) {
                 prenom: formateur.prenom,
                 email: formateur.email,
                 role: 'formateur',
+                bureau: formateur.bureau || false,
                 mustChangePassword: false
             },
             tokens: {
