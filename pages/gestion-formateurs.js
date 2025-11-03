@@ -754,14 +754,14 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 fontWeight: '600',
                                 color: '#374151'
                             }}>
-                                📍 Distances Domicile → Lieux (en km)
+                                📍 Distances Domicile → Lieux (aller-retour en km)
                             </h4>
                             <p style={{
                                 margin: '0 0 15px 0',
                                 fontSize: '12px',
                                 color: '#6b7280'
                             }}>
-                                Saisissez les distances pour calculer les frais kilométriques
+                                Saisissez la distance <strong>aller-retour</strong> pour chaque lieu
                             </p>
                             {lieux.length === 0 ? (
                                 <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>
@@ -967,14 +967,14 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 fontWeight: '600',
                                 color: '#92400e'
                             }}>
-                                📍 Distances Domicile → Lieux (en km)
+                                📍 Distances Domicile → Lieux (aller-retour en km)
                             </h4>
                             <p style={{
                                 margin: '0 0 15px 0',
                                 fontSize: '12px',
                                 color: '#92400e'
                             }}>
-                                Saisissez les distances pour calculer les frais kilométriques
+                                Saisissez la distance <strong>aller-retour</strong> pour chaque lieu
                             </p>
                             {lieux.length === 0 ? (
                                 <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>

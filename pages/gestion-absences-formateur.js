@@ -189,6 +189,9 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         const lieuxStats = {}
         const distancesAUtiliser = distancesMap || distances
 
+        // Regrouper par date pour compter 1 seul déplacement par jour
+        const presencesParDate = {}
+
         console.log('🔍 [DEBUG] Calcul stats avec distances:', distancesAUtiliser)
 
         interventionsData.forEach(intervention => {
@@ -206,16 +209,29 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                     lieuxStats[lieuDeclare] = 1
                 }
 
-                // Calculer les kilomètres aller-retour
-                const distance = distancesAUtiliser[lieuDeclare]
-                console.log(`🔍 [DEBUG] Lieu: ${lieuDeclare}, Distance: ${distance}`)
-                if (distance && !isNaN(distance)) {
-                    const kmAR = parseFloat(distance) * 2
-                    totalKmAllerRetour += kmAR
-                    console.log(`✅ [DEBUG] Ajout ${kmAR} km (${distance} x 2)`)
+                // Regrouper par date (1 déplacement/jour même si M+AM)
+                const dateKey = intervention.date
+                if (!presencesParDate[dateKey]) {
+                    presencesParDate[dateKey] = {
+                        lieu: lieuDeclare,
+                        creneaux: []
+                    }
                 }
+                presencesParDate[dateKey].creneaux.push(intervention.creneau)
             } else {
                 nonDeclareInterventions++
+            }
+        })
+
+        // Calculer les km (1 déplacement par date) et enrichir presencesParDate
+        Object.entries(presencesParDate).forEach(([date, info]) => {
+            const distance = distancesAUtiliser[info.lieu]
+            console.log(`🔍 [DEBUG] ${date} - Lieu: ${info.lieu}, Créneaux: ${info.creneaux.join(', ')}, Distance: ${distance} km`)
+            if (distance && !isNaN(distance)) {
+                const kmAR = parseFloat(distance) // Déjà en aller-retour
+                totalKmAllerRetour += kmAR
+                presencesParDate[date].km = kmAR // Ajouter le km à chaque date
+                console.log(`✅ [DEBUG] Ajout ${kmAR} km`)
             }
         })
 
@@ -230,7 +246,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             nonDeclareInterventions,
             tauxPresence,
             lieuxStats,
-            totalKmAllerRetour
+            totalKmAllerRetour,
+            presencesParDate // Pour afficher les km par ligne (objet indexé par date)
         })
     }
 
@@ -455,6 +472,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         <p>• Présent : ${stats.presentsInterventions || 0}</p>
                         ${formateurInfo.bureau ? `<p>• Bureau : ${stats.bureauInterventions || 0}</p>` : ''}
                         <p>• Non déclaré : ${stats.nonDeclareInterventions || 0}</p>
+                        ${stats.totalKmAllerRetour > 0 ? `<p><strong>• Total km aller-retour : ${Math.round(stats.totalKmAllerRetour)} km</strong></p>` : ''}
                     </div>
 
                     <table>
@@ -1077,6 +1095,14 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                         }}>
                                             Date déclaration
                                         </th>
+                                        <th style={{
+                                            padding: '12px',
+                                            textAlign: 'center',
+                                            borderBottom: '1px solid #e5e7eb',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            km A/R
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1117,12 +1143,12 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                         intervention.statut_prevu === 'affecte_coordo' ? '#dbeafe' :
                                                         intervention.statut_prevu === 'dispo_except' ? '#fef3c7' :
                                                         intervention.statut_prevu === 'disponible_non_choisi' ? '#f3f4f6' :
-                                                        intervention.statut_prevu === 'bureau' ? '#e0e7ff' : '#f3f4f6',
+                                                        intervention.statut_prevu === 'bureau' ? '#f3e8ff' : '#f3f4f6',
                                                     color:
                                                         intervention.statut_prevu === 'affecte_coordo' ? '#1e40af' :
                                                         intervention.statut_prevu === 'dispo_except' ? '#92400e' :
                                                         intervention.statut_prevu === 'disponible_non_choisi' ? '#6b7280' :
-                                                        intervention.statut_prevu === 'bureau' ? '#4338ca' : '#6b7280'
+                                                        intervention.statut_prevu === 'bureau' ? '#7c3aed' : '#6b7280'
                                                 }}>
                                                     {intervention.statut_prevu === 'affecte_coordo' ? 'Affecté coordo' :
                                                      intervention.statut_prevu === 'dispo_except' ? 'Dispo except.' :
@@ -1247,6 +1273,30 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                     new Date(intervention.date_declaration).toLocaleDateString('fr-FR') :
                                                     '-'
                                                 }
+                                            </td>
+                                            <td style={{
+                                                padding: '12px',
+                                                borderBottom: '1px solid #e5e7eb',
+                                                textAlign: 'center',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {(() => {
+                                                    // Vérifier si c'est la première ligne pour cette date
+                                                    if (index > 0 && presences[index - 1]?.date === intervention.date) {
+                                                        // Ce n'est pas la première ligne pour cette date
+                                                        return '-';
+                                                    }
+
+                                                    // C'est la première ligne pour cette date, chercher le km
+                                                    if (stats?.presencesParDate && stats.presencesParDate[intervention.date]) {
+                                                        const km = stats.presencesParDate[intervention.date].km;
+                                                        if (km) {
+                                                            return `${km.toFixed(1)} km`;
+                                                        }
+                                                    }
+
+                                                    return '-';
+                                                })()}
                                             </td>
                                         </tr>
                                     ))}

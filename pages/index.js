@@ -505,7 +505,7 @@ function Dashboard() {
     { title: "Gestion Apprenants", icon: "👨‍🎓", href: "/gestion-apprenants" },
     { title: "Gestion Salariés", icon: "👷‍♂️", href: "/gestion-salaries" },
     { title: "Gestion Lieux", icon: "📍", href: "/gestion-lieux" },
-    { title: "Gestion Absences Formateur", icon: "📊", href: "/gestion-absences-formateur" },
+    { title: "Gestion Présences Formateur", icon: "📊", href: "/gestion-absences-formateur" },
     { title: "Absence Apprenant", icon: "🎓", href: "/absence-apprenant" }
   ]
 
