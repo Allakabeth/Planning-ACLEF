@@ -34,8 +34,11 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
     useEffect(() => {
         if (formateurSelectionne && dateDebut && dateFin) {
-            chargerPresences()
-            chargerDistances()
+            const chargerTout = async () => {
+                const distancesChargees = await chargerDistances()
+                await chargerPresences(distancesChargees)
+            }
+            chargerTout()
         }
     }, [formateurSelectionne, dateDebut, dateFin])
 
@@ -133,6 +136,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
             if (error) throw error
 
+            console.log('🔍 [DEBUG] Distances chargées depuis BDD:', data)
+
             // Créer un map {lieu_nom: distance_km} et {lieu_initiale: distance_km}
             const distancesMap = {}
             if (data) {
@@ -140,16 +145,19 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                     if (d.lieux) {
                         distancesMap[d.lieux.nom] = d.distance_km
                         distancesMap[d.lieux.initiale] = d.distance_km
+                        console.log(`📍 [DEBUG] ${d.lieux.nom} (${d.lieux.initiale}) = ${d.distance_km} km`)
                     }
                 })
             }
             setDistances(distancesMap)
+            return distancesMap
         } catch (error) {
             console.error('Erreur chargement distances:', error)
+            return {}
         }
     }
 
-    const chargerPresences = async () => {
+    const chargerPresences = async (distancesMap = null) => {
         if (!formateurSelectionne || !dateDebut || !dateFin) return
 
         try {
@@ -162,7 +170,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
             const data = await response.json()
             setPresences(data)
-            calculerStats(data)
+            calculerStats(data, distancesMap)
         } catch (error) {
             console.error('Erreur chargement présences:', error)
             setMessage('Erreur lors du chargement des présences')
@@ -171,7 +179,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         }
     }
 
-    const calculerStats = (interventionsData) => {
+    const calculerStats = (interventionsData, distancesMap = null) => {
         let totalInterventions = 0
         let presentsInterventions = 0
         let bureauInterventions = 0
@@ -179,6 +187,9 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         let totalKmAllerRetour = 0
 
         const lieuxStats = {}
+        const distancesAUtiliser = distancesMap || distances
+
+        console.log('🔍 [DEBUG] Calcul stats avec distances:', distancesAUtiliser)
 
         interventionsData.forEach(intervention => {
             totalInterventions++
@@ -196,14 +207,19 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                 }
 
                 // Calculer les kilomètres aller-retour
-                const distance = distances[lieuDeclare]
+                const distance = distancesAUtiliser[lieuDeclare]
+                console.log(`🔍 [DEBUG] Lieu: ${lieuDeclare}, Distance: ${distance}`)
                 if (distance && !isNaN(distance)) {
-                    totalKmAllerRetour += parseFloat(distance) * 2 // Aller-retour
+                    const kmAR = parseFloat(distance) * 2
+                    totalKmAllerRetour += kmAR
+                    console.log(`✅ [DEBUG] Ajout ${kmAR} km (${distance} x 2)`)
                 }
             } else {
                 nonDeclareInterventions++
             }
         })
+
+        console.log(`📊 [DEBUG] Total km aller-retour: ${totalKmAllerRetour}`)
 
         const tauxPresence = totalInterventions > 0 ? Math.round((presentsInterventions / totalInterventions) * 100) : 0
 
