@@ -21,10 +21,14 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     const [prenom, setPrenom] = useState('')
     const [nom, setNom] = useState('')
     const [bureau, setBureau] = useState(false)
-    
+    const [distances, setDistances] = useState({}) // {lieu_id: distance_km}
+
     // États formulaire modification
     const [formateurEnModification, setFormateurEnModification] = useState(null)
     const [showModifierForm, setShowModifierForm] = useState(false)
+
+    // Liste des lieux pour la saisie des distances
+    const [lieux, setLieux] = useState([])
     
     // États pour confirmation
     const [showConfirmation, setShowConfirmation] = useState(false)
@@ -32,6 +36,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
 
     useEffect(() => {
         fetchFormateurs()
+        fetchLieux()
     }, [filtreStatut])
 
     // 👥 Charger et écouter les admins connectés en temps réel
@@ -105,7 +110,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
             if (error) throw error
 
             let formateursFiltres = data || []
-            
+
             if (filtreStatut === 'actif') {
                 formateursFiltres = data.filter(f => f.archive !== true)
             } else if (filtreStatut === 'archive') {
@@ -116,6 +121,22 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
         } catch (error) {
             setMessage('Erreur lors du chargement des formateurs')
             console.error(error)
+        }
+    }
+
+    // Fonction pour récupérer la liste des lieux
+    const fetchLieux = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('lieux')
+                .select('*')
+                .eq('archive', false)
+                .order('nom')
+
+            if (error) throw error
+            setLieux(data || [])
+        } catch (error) {
+            console.error('Erreur chargement lieux:', error)
         }
     }
 
@@ -185,7 +206,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     // Fonction pour ajouter un formateur
     const handleSubmitAjout = async (e) => {
         e.preventDefault()
-        
+
         if (!prenom.trim() || !nom.trim()) {
             setMessage('Le prénom et le nom sont obligatoires')
             setTimeout(() => setMessage(''), 4000)
@@ -196,28 +217,53 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
         try {
             // Générer l'email fictif pour Supabase Auth
             const emailFictif = genererEmailFictif(prenom.trim(), nom.trim())
-            
-            const { error } = await supabase.from('users').insert([{
+
+            const { data: formateurCree, error } = await supabase.from('users').insert([{
                 prenom: prenom.trim(),
                 nom: nom.trim(),
                 email: emailFictif, // Email fictif pour l'authentification
                 role: 'formateur',
                 archive: false,
                 bureau: bureau
-            }])
-            
+            }]).select()
+
             if (error) throw error
-            
+
+            // Sauvegarder les distances si le formateur a été créé
+            if (formateurCree && formateurCree.length > 0) {
+                const formateurId = formateurCree[0].id
+
+                // Insérer les distances saisies
+                const distancesAInserer = Object.entries(distances)
+                    .filter(([lieuId, distance]) => distance && parseFloat(distance) > 0)
+                    .map(([lieuId, distance]) => ({
+                        formateur_id: formateurId,
+                        lieu_id: lieuId,
+                        distance_km: parseFloat(distance)
+                    }))
+
+                if (distancesAInserer.length > 0) {
+                    const { error: distanceError } = await supabase
+                        .from('distances_formateurs')
+                        .insert(distancesAInserer)
+
+                    if (distanceError) {
+                        console.error('Erreur sauvegarde distances:', distanceError)
+                    }
+                }
+            }
+
             setMessage(`Formateur ajouté avec succès !\n\nEmail fictif généré : ${emailFictif}\nIdentifiant: ${prenom} / Mot de passe: ${nom}\n\n⚠️ Le formateur devra changer son mot de passe lors de la première connexion.`)
             setTimeout(() => setMessage(''), 8000)
-            
+
             // Réinitialiser le formulaire
             setPrenom('')
             setNom('')
             setBureau(false)
+            setDistances({})
             setShowAjouterForm(false)
             await fetchFormateurs()
-            
+
         } catch (error) {
             setMessage(`Erreur : ${error.message}`)
             setTimeout(() => setMessage(''), 4000)
@@ -229,7 +275,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     // Fonction pour modifier un formateur
     const handleSubmitModification = async (e) => {
         e.preventDefault()
-        
+
         if (!formateurEnModification || !formateurEnModification.prenom.trim() || !formateurEnModification.nom.trim()) {
             setMessage('Le prénom et le nom sont obligatoires')
             setTimeout(() => setMessage(''), 4000)
@@ -243,7 +289,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                 formateurEnModification.prenom.trim(),
                 formateurEnModification.nom.trim()
             )
-            
+
             const { error } = await supabase
                 .from('users')
                 .update({
@@ -253,15 +299,44 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                     bureau: formateurEnModification.bureau || false
                 })
                 .eq('id', formateurEnModification.id)
-            
+
             if (error) throw error
-            
+
+            // Mettre à jour les distances
+            const formateurId = formateurEnModification.id
+
+            // 1. Supprimer les anciennes distances
+            await supabase
+                .from('distances_formateurs')
+                .delete()
+                .eq('formateur_id', formateurId)
+
+            // 2. Insérer les nouvelles distances
+            const distancesAInserer = Object.entries(distances)
+                .filter(([lieuId, distance]) => distance && parseFloat(distance) > 0)
+                .map(([lieuId, distance]) => ({
+                    formateur_id: formateurId,
+                    lieu_id: lieuId,
+                    distance_km: parseFloat(distance)
+                }))
+
+            if (distancesAInserer.length > 0) {
+                const { error: distanceError } = await supabase
+                    .from('distances_formateurs')
+                    .insert(distancesAInserer)
+
+                if (distanceError) {
+                    console.error('Erreur sauvegarde distances:', distanceError)
+                }
+            }
+
             setMessage('Formateur modifié avec succès !\n\nNouveau email fictif : ' + nouvelEmailFictif)
             setTimeout(() => setMessage(''), 6000)
             setFormateurEnModification(null)
             setShowModifierForm(false)
+            setDistances({})
             await fetchFormateurs()
-            
+
         } catch (error) {
             setMessage(`Erreur : ${error.message}`)
             setTimeout(() => setMessage(''), 4000)
@@ -271,10 +346,28 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
     }
 
     // Initier la modification
-    const initierModification = (formateur) => {
+    const initierModification = async (formateur) => {
         setFormateurEnModification({...formateur})
         setShowModifierForm(true)
         setShowAjouterForm(false)
+
+        // Charger les distances existantes pour ce formateur
+        try {
+            const { data: distancesExistantes, error } = await supabase
+                .from('distances_formateurs')
+                .select('lieu_id, distance_km')
+                .eq('formateur_id', formateur.id)
+
+            if (!error && distancesExistantes) {
+                const distancesMap = {}
+                distancesExistantes.forEach(d => {
+                    distancesMap[d.lieu_id] = d.distance_km.toString()
+                })
+                setDistances(distancesMap)
+            }
+        } catch (error) {
+            console.error('Erreur chargement distances:', error)
+        }
     }
 
     // Actions archiver/désarchiver/supprimer
@@ -646,6 +739,69 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 <span>Membre du Bureau</span>
                             </label>
                         </div>
+
+                        {/* Distances Domicile - Lieux */}
+                        <div style={{
+                            marginBottom: '15px',
+                            padding: '15px',
+                            backgroundColor: '#f9fafb',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb'
+                        }}>
+                            <h4 style={{
+                                margin: '0 0 10px 0',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                color: '#374151'
+                            }}>
+                                📍 Distances Domicile → Lieux (en km)
+                            </h4>
+                            <p style={{
+                                margin: '0 0 15px 0',
+                                fontSize: '12px',
+                                color: '#6b7280'
+                            }}>
+                                Saisissez les distances pour calculer les frais kilométriques
+                            </p>
+                            {lieux.length === 0 ? (
+                                <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                    Aucun lieu disponible
+                                </p>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    {lieux.map(lieu => (
+                                        <div key={lieu.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <label style={{
+                                                fontSize: '13px',
+                                                color: '#374151',
+                                                minWidth: '80px',
+                                                fontWeight: '500'
+                                            }}>
+                                                → {lieu.nom}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                placeholder="km"
+                                                value={distances[lieu.id] || ''}
+                                                onChange={(e) => setDistances(prev => ({
+                                                    ...prev,
+                                                    [lieu.id]: e.target.value
+                                                }))}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 8px',
+                                                    border: '1px solid #d1d5db',
+                                                    borderRadius: '6px',
+                                                    fontSize: '13px'
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         {prenom && nom && (
                             <div style={{
                                 backgroundColor: '#f3f4f6',
@@ -682,6 +838,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                     setPrenom('')
                                     setNom('')
                                     setBureau(false)
+                                    setDistances({})
                                 }}
                                 disabled={!canEdit}
                                 title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
@@ -795,6 +952,69 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 <span>Membre du Bureau</span>
                             </label>
                         </div>
+
+                        {/* Distances Domicile - Lieux */}
+                        <div style={{
+                            marginBottom: '15px',
+                            padding: '15px',
+                            backgroundColor: '#fffbeb',
+                            borderRadius: '8px',
+                            border: '1px solid #fbbf24'
+                        }}>
+                            <h4 style={{
+                                margin: '0 0 10px 0',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                color: '#92400e'
+                            }}>
+                                📍 Distances Domicile → Lieux (en km)
+                            </h4>
+                            <p style={{
+                                margin: '0 0 15px 0',
+                                fontSize: '12px',
+                                color: '#92400e'
+                            }}>
+                                Saisissez les distances pour calculer les frais kilométriques
+                            </p>
+                            {lieux.length === 0 ? (
+                                <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                    Aucun lieu disponible
+                                </p>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    {lieux.map(lieu => (
+                                        <div key={lieu.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <label style={{
+                                                fontSize: '13px',
+                                                color: '#92400e',
+                                                minWidth: '80px',
+                                                fontWeight: '500'
+                                            }}>
+                                                → {lieu.nom}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                min="0"
+                                                placeholder="km"
+                                                value={distances[lieu.id] || ''}
+                                                onChange={(e) => setDistances(prev => ({
+                                                    ...prev,
+                                                    [lieu.id]: e.target.value
+                                                }))}
+                                                style={{
+                                                    width: '80px',
+                                                    padding: '6px 8px',
+                                                    border: '1px solid #fbbf24',
+                                                    borderRadius: '6px',
+                                                    fontSize: '13px'
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         {formateurEnModification.prenom && formateurEnModification.nom && (
                             <div style={{
                                 backgroundColor: '#fbbf24',
@@ -830,6 +1050,7 @@ function GestionFormateurs({ user, logout, inactivityTime, priority }) {
                                 onClick={() => {
                                     setShowModifierForm(false)
                                     setFormateurEnModification(null)
+                                    setDistances({})
                                 }}
                                 disabled={!canEdit}
                                 title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}

@@ -19,6 +19,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     const [message, setMessage] = useState('')
     const [stats, setStats] = useState({})
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
+    const [distances, setDistances] = useState({}); // Distances formateur → lieux {lieu_id: distance_km}
 
     useEffect(() => {
         chargerFormateurs()
@@ -34,6 +35,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     useEffect(() => {
         if (formateurSelectionne && dateDebut && dateFin) {
             chargerPresences()
+            chargerDistances()
         }
     }, [formateurSelectionne, dateDebut, dateFin])
 
@@ -116,6 +118,37 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         }
     }
 
+    const chargerDistances = async () => {
+        if (!formateurSelectionne) return
+
+        try {
+            const { data, error } = await supabase
+                .from('distances_formateurs')
+                .select(`
+                    lieu_id,
+                    distance_km,
+                    lieux (nom, initiale)
+                `)
+                .eq('formateur_id', formateurSelectionne)
+
+            if (error) throw error
+
+            // Créer un map {lieu_nom: distance_km} et {lieu_initiale: distance_km}
+            const distancesMap = {}
+            if (data) {
+                data.forEach(d => {
+                    if (d.lieux) {
+                        distancesMap[d.lieux.nom] = d.distance_km
+                        distancesMap[d.lieux.initiale] = d.distance_km
+                    }
+                })
+            }
+            setDistances(distancesMap)
+        } catch (error) {
+            console.error('Erreur chargement distances:', error)
+        }
+    }
+
     const chargerPresences = async () => {
         if (!formateurSelectionne || !dateDebut || !dateFin) return
 
@@ -143,6 +176,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         let presentsInterventions = 0
         let bureauInterventions = 0
         let nonDeclareInterventions = 0
+        let totalKmAllerRetour = 0
 
         const lieuxStats = {}
 
@@ -160,6 +194,12 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                 } else {
                     lieuxStats[lieuDeclare] = 1
                 }
+
+                // Calculer les kilomètres aller-retour
+                const distance = distances[lieuDeclare]
+                if (distance && !isNaN(distance)) {
+                    totalKmAllerRetour += parseFloat(distance) * 2 // Aller-retour
+                }
             } else {
                 nonDeclareInterventions++
             }
@@ -173,7 +213,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             bureauInterventions,
             nonDeclareInterventions,
             tauxPresence,
-            lieuxStats
+            lieuxStats,
+            totalKmAllerRetour
         })
     }
 
@@ -822,6 +863,23 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                     Non déclaré
                                 </div>
                             </div>
+
+                            {/* Kilomètres totaux */}
+                            {stats.totalKmAllerRetour > 0 && (
+                                <div style={{
+                                    backgroundColor: '#dbeafe',
+                                    padding: '15px',
+                                    borderRadius: '8px',
+                                    textAlign: 'center'
+                                }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af' }}>
+                                        {Math.round(stats.totalKmAllerRetour)} km
+                                    </div>
+                                    <div style={{ fontSize: '14px', color: '#1e40af' }}>
+                                        Aller-retour cumulés
+                                    </div>
+                                </div>
+                            )}
 
                         </div>
 
