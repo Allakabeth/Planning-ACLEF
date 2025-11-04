@@ -17,6 +17,9 @@ export default function Absence({
     const [envoiEnCours, setEnvoiEnCours] = useState(false)
     const [showMessageModal, setShowMessageModal] = useState(false)
     const [messageFacultatif, setMessageFacultatif] = useState('')
+    // ✅ NOUVEAU: États pour sélection créneaux M/AM
+    const [creneauMatin, setCreneauMatin] = useState(false)
+    const [creneauAM, setCreneauAM] = useState(false)
 
     useEffect(() => {
         if (formateurId) {
@@ -436,6 +439,19 @@ export default function Absence({
 
             console.log(`📤 ${modificationsDetectees.length} modifications détectées:`, modificationsDetectees)
 
+            // ✅ NOUVEAU: Déterminer le créneau
+            let creneauValue = null; // Par défaut : journée entière
+
+            if (creneauMatin && !creneauAM) {
+                creneauValue = 'M'; // ✅ 'M' (contrainte BDD)
+            } else if (creneauAM && !creneauMatin) {
+                creneauValue = 'AM'; // ✅ 'AM'
+            } else if (creneauMatin && creneauAM) {
+                creneauValue = null; // Les deux = journée entière
+            }
+
+            console.log(`🕐 Créneau sélectionné: ${creneauValue || 'journée entière'}`);
+
             // Créer un enregistrement par jour modifié
             const enregistrementsACreer = modificationsDetectees.map(modif => ({
                 formateur_id: formateurId,
@@ -444,6 +460,7 @@ export default function Absence({
                 type: modif.type,
                 statut: 'en_attente',
                 motif: null, // Optionnel, peut être ajouté plus tard
+                creneau: creneauValue, // ✅ AJOUT DU CRÉNEAU
                 created_at: new Date().toISOString()
             }))
 
@@ -797,6 +814,93 @@ export default function Absence({
                             📊 {Object.keys(planningModifie).filter(date => 
                                 planningModifie[date] !== planningOriginal[date]
                             ).length} modification(s)
+                        </div>
+                    )}
+
+                    {/* ✅ NOUVEAU: Sélection créneaux M/AM */}
+                    {aDesModifications() && (
+                        <div style={{
+                            marginTop: '12px',
+                            marginBottom: '12px',
+                            padding: '12px',
+                            backgroundColor: '#f3f4f6',
+                            borderRadius: '8px',
+                            border: '1px solid #d1d5db'
+                        }}>
+                            <div style={{
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                color: '#374151',
+                                marginBottom: '8px',
+                                textAlign: 'center'
+                            }}>
+                                Choisir un créneau (optionnel)
+                            </div>
+                            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'}}>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: creneauAM ? 'not-allowed' : 'pointer',
+                                    fontSize: '12px',
+                                    color: creneauAM ? '#9ca3af' : '#374151',
+                                    opacity: creneauAM ? 0.5 : 1
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={creneauMatin}
+                                        onChange={(e) => {
+                                            setCreneauMatin(e.target.checked);
+                                            if (e.target.checked) {
+                                                setCreneauAM(false);
+                                            }
+                                        }}
+                                        disabled={creneauAM}
+                                        style={{
+                                            width: '18px',
+                                            height: '18px',
+                                            cursor: creneauAM ? 'not-allowed' : 'pointer'
+                                        }}
+                                    />
+                                    <span>Matin (M)</span>
+                                </label>
+
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: creneauMatin ? 'not-allowed' : 'pointer',
+                                    fontSize: '12px',
+                                    color: creneauMatin ? '#9ca3af' : '#374151',
+                                    opacity: creneauMatin ? 0.5 : 1
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={creneauAM}
+                                        onChange={(e) => {
+                                            setCreneauAM(e.target.checked);
+                                            if (e.target.checked) {
+                                                setCreneauMatin(false);
+                                            }
+                                        }}
+                                        disabled={creneauMatin}
+                                        style={{
+                                            width: '18px',
+                                            height: '18px',
+                                            cursor: creneauMatin ? 'not-allowed' : 'pointer'
+                                        }}
+                                    />
+                                    <span>Après-midi (AM)</span>
+                                </label>
+                            </div>
+                            <div style={{
+                                fontSize: '10px',
+                                color: '#6b7280',
+                                marginTop: '8px',
+                                textAlign: 'center'
+                            }}>
+                                Non coché = journée entière
+                            </div>
                         </div>
                     )}
 
