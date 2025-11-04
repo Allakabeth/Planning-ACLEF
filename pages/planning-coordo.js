@@ -2098,7 +2098,9 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
                         const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
                         const lieuId = lieuxSelectionnes[key] || null;
-                        const salarieId = salariesSelectionnes[key] || null;
+                        // ✅ FIX: Extraire le premier élément si array, sinon prendre la valeur directement
+                        const salarieValue = salariesSelectionnes[key];
+                        const salarieId = Array.isArray(salarieValue) ? (salarieValue[0] || null) : (salarieValue || null);
                         
                         if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
                             // Filtrer les formateurs non absents pour la semaine suivante (avec support créneaux)
