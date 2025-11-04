@@ -659,36 +659,45 @@ function ValiderChangements({ user, logout, inactivityTime, priority }) {
         }
     };
 
-    // 👑 NOUVELLE FONCTION ROI - MESSAGES AUTOMATIQUES ÉTENDUS (CORRIGÉE)
-    const envoyerConfirmationFormateur = async (formateur, absence, action) => {
+    // 👑 NOUVELLE FONCTION ROI - MESSAGES AUTOMATIQUES ÉTENDUS (CORRIGÉE + TRAÇABILITÉ)
+    const envoyerConfirmationFormateur = async (formateur, absence, action, adminNom = null) => {
         try {
             let contenu = '';
             let objet = '';
-            
+            const traite = adminNom ? `\n\nTraité par: ${adminNom}` : '';
+
             switch(action) {
                 case 'validee':
                     objet = `Absence validée - ${formatDateFr(absence.date_debut)}`;
-                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été validée par le coordinateur.\n\nType: ${absence.type}\nVotre planning a été mis à jour automatiquement.\n\nCordialement,\nL'équipe ACLEF`;
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été validée par le coordinateur.\n\nType: ${absence.type}\nVotre planning a été mis à jour automatiquement.${traite}\n\nCordialement,\nL'équipe ACLEF`;
                     break;
                 case 'supprimee':
                     objet = `Absence supprimée - ${formatDateFr(absence.date_debut)}`;
-                    contenu = `Bonjour ${formateur.prenom},\n\nVotre absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été supprimée.\n\nVous redevenez disponible selon votre planning type habituel.\n\nCordialement,\nL'équipe ACLEF`;
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre absence du ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)} a été supprimée.\n\nVous redevenez disponible selon votre planning type habituel.${traite}\n\nCordialement,\nL'équipe ACLEF`;
                     break;
                 case 'modifiee':
                     objet = `Absence modifiée - ${formatDateFr(absence.date_debut)}`;
-                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence a été modifiée par le coordinateur.\n\nNouveau statut: ${absence.type}\nPériode: ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)}\n\nVotre planning a été mis à jour.\n\nCordialement,\nL'équipe ACLEF`;
+                    contenu = `Bonjour ${formateur.prenom},\n\nVotre demande d'absence a été modifiée par le coordinateur.\n\nNouveau statut: ${absence.type}\nPériode: ${formatDateFr(absence.date_debut)} au ${formatDateFr(absence.date_fin)}\n\nVotre planning a été mis à jour.${traite}\n\nCordialement,\nL'équipe ACLEF`;
                     break;
                 default:
                     throw new Error(`Action message inconnue: ${action}`);
             }
 
             // ✅ CORRECTION : Type contrainte BDD respectée (planning ou messagerie)
+            const now = new Date();
+            const heureActuelle = now.toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+
             const { error } = await supabase.from('messages').insert({
                 expediteur: 'Coordination ACLEF',
                 destinataire_id: formateur.id,
                 objet: objet,
                 contenu: contenu,
-                type: 'planning'
+                type: 'planning',
+                heure: heureActuelle  // ✅ AJOUT HEURE CORRECTE
             });
 
             if (error) throw error;
@@ -799,9 +808,10 @@ function ValiderChangements({ user, logout, inactivityTime, priority }) {
                 });
             }
 
-            // 4. 👑 ENVOYER MESSAGE AU FORMATEUR
+            // 4. 👑 ENVOYER MESSAGE AU FORMATEUR (avec traçabilité)
             const absenceModifiee = { ...absence, type: nouveauType };
-            await envoyerConfirmationFormateur(formateur, absenceModifiee, 'modifiee');
+            const adminNom = user.email ? user.email.split('@')[0].toUpperCase() : 'Admin';
+            await envoyerConfirmationFormateur(formateur, absenceModifiee, 'modifiee', adminNom);
 
             // 5. 👑 METTRE À JOUR STATS ROI
             setStatsRoi(prev => ({
@@ -876,8 +886,9 @@ ${messageTransformation}
                 affectationsNettoyees: resultatsNettoyage.affectationsNettoyees
             });
 
-            // 5. 👑 ENVOYER MESSAGE AU FORMATEUR
-            await envoyerConfirmationFormateur(formateur, absence, 'supprimee');
+            // 5. 👑 ENVOYER MESSAGE AU FORMATEUR (avec traçabilité)
+            const adminNom = user.email ? user.email.split('@')[0].toUpperCase() : 'Admin';
+            await envoyerConfirmationFormateur(formateur, absence, 'supprimee', adminNom);
 
             // 6. 👑 METTRE À JOUR STATS ROI
             setStatsRoi(prev => ({
@@ -957,9 +968,10 @@ ${messageTransformation}
                 });
             }
 
-            // 5. 👑 ENVOYER MESSAGE AU FORMATEUR (avec objet formateur complet)
+            // 5. 👑 ENVOYER MESSAGE AU FORMATEUR (avec objet formateur complet + traçabilité)
             const changementAvecFormateur = { ...changement, formateur };
-            await envoyerConfirmationFormateur(formateur, changementAvecFormateur, 'validee');
+            const adminNom = user.email ? user.email.split('@')[0].toUpperCase() : 'Admin';
+            await envoyerConfirmationFormateur(formateur, changementAvecFormateur, 'validee', adminNom);
 
             // 6. Mettre à jour stats
             setStatsRoi(prev => ({
