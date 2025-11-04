@@ -1022,12 +1022,13 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                 </div>
               </div>
               
-              <div style={{ 
+              <div style={{
                 backgroundColor: '#f9fafb',
                 padding: '15px',
                 borderRadius: '6px',
                 marginBottom: '15px',
-                lineHeight: '1.5'
+                lineHeight: '1.5',
+                whiteSpace: 'pre-wrap'  // ✅ Respecter les retours à la ligne
               }}>
                 {selectedMessage.contenu}
               </div>
