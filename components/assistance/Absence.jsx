@@ -817,16 +817,15 @@ export default function Absence({
                         </div>
                     )}
 
-                    {/* ✅ NOUVEAU: Sélection créneaux M/AM */}
-                    {aDesModifications() && (
-                        <div style={{
-                            marginTop: '12px',
-                            marginBottom: '12px',
-                            padding: '12px',
-                            backgroundColor: '#f3f4f6',
-                            borderRadius: '8px',
-                            border: '1px solid #d1d5db'
-                        }}>
+                    {/* ✅ NOUVEAU: Sélection créneaux M/AM - TOUJOURS VISIBLE */}
+                    <div style={{
+                        marginTop: '12px',
+                        marginBottom: '12px',
+                        padding: '12px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '8px',
+                        border: '1px solid #d1d5db'
+                    }}>
                             <div style={{
                                 fontSize: '11px',
                                 fontWeight: 'bold',
@@ -901,8 +900,7 @@ export default function Absence({
                             }}>
                                 Non coché = journée entière
                             </div>
-                        </div>
-                    )}
+                    </div>
 
                     {/* Bouton validation */}
                     {aDesModifications() && (
