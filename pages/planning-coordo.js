@@ -469,11 +469,21 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         return lieu ? lieu.nom : '';
     };
 
-    // Helper pour récupérer le nom du salarié  
+    // Helper pour récupérer le nom du salarié
     const getNomSalarie = (salarieId) => {
         if (!salarieId) return '';
         const salarie = salaries.find(s => s.id === salarieId);
         return salarie ? (salarie.initiales || getInitiales(salarie.prenom, salarie.nom)) : '';
+    };
+
+    // Helper pour afficher plusieurs salariés
+    const getNomsSalaries = (salariesIds) => {
+        if (!salariesIds || salariesIds.length === 0) return 'Aucun salarié';
+        return salariesIds
+            .filter(id => id)
+            .map(id => getNomSalarie(id))
+            .filter(nom => nom)
+            .join(', ');
     };
 
     // Helper pour récupérer le nom du formateur
@@ -1078,7 +1088,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                         newApprenantsParCase[key] = [];
                         newFormateursParCase[key] = [];
                         newLieuxSelectionnes[key] = "";
-                        newSalariesSelectionnes[key] = "";
+                        newSalariesSelectionnes[key] = [];
                     });
                 });
             });
@@ -1100,8 +1110,13 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                         if (item.lieu_id) {
                             newLieuxSelectionnes[key] = item.lieu_id;
                         }
-                        if (item.salarie_id) {
-                            newSalariesSelectionnes[key] = item.salarie_id;
+                        // Support du nouveau format avec tableau
+                        if (item.salaries_ids && Array.isArray(item.salaries_ids) && item.salaries_ids.length > 0) {
+                            newSalariesSelectionnes[key] = item.salaries_ids.filter(id => id);
+                        }
+                        // Compatibilité ancien format (single salarie_id)
+                        else if (item.salarie_id) {
+                            newSalariesSelectionnes[key] = [item.salarie_id];
                         }
                     }
                 });
@@ -1442,9 +1457,9 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
                     const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
                     const lieuId = lieuxSelectionnes[key] || null;
-                    const salarieId = salariesSelectionnes[key] || null;
-                    
-                    if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
+                    const salariesIds = (salariesSelectionnes[key] || []).filter(id => id !== "");
+
+                    if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salariesIds.length > 0) {
                         let creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
 
                         planningsToSave.push({
@@ -1453,7 +1468,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             creneau: creneauDB,
                             lieu_index: lieuIndex,
                             lieu_id: lieuId,
-                            salarie_id: salarieId || null,
+                            salaries_ids: salariesIds.length > 0 ? salariesIds : null,
                             formateurs_ids: formateursIds,
                             apprenants_ids: apprenantsIds,
                             statut_planning: statut
@@ -1854,9 +1869,38 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         setLieuxSelectionnes(prev => ({ ...prev, [key]: value }));
     };
 
-    const handleSalarieChange = (dayIndex, lieuIndex, creneau, value) => {
+    const handleSalarieChange = (dayIndex, lieuIndex, creneau, selectIndex, value) => {
         const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-        setSalariesSelectionnes(prev => ({ ...prev, [key]: value }));
+        const newList = [...(salariesSelectionnes[key] || [])];
+        newList[selectIndex] = value;
+        setSalariesSelectionnes(prev => ({ ...prev, [key]: newList }));
+
+        // Si on supprime un salarié (valeur vide), vérifier si case devient vide
+        if (value === "") {
+            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
+        }
+    };
+
+    const handleAddSalarie = (dayIndex, lieuIndex, creneau) => {
+        const key = `${dayIndex}-${lieuIndex}-${creneau}`;
+        setSalariesSelectionnes(prev => ({
+            ...prev,
+            [key]: [...(prev[key] || []), ""]
+        }));
+    };
+
+    const handleRemoveSalarie = (dayIndex, lieuIndex, creneau) => {
+        const key = `${dayIndex}-${lieuIndex}-${creneau}`;
+        const currentList = salariesSelectionnes[key] || [];
+        if (currentList.length > 0) {
+            setSalariesSelectionnes(prev => ({
+                ...prev,
+                [key]: prev[key].slice(0, -1)
+            }));
+
+            // Vérifier si case devient vide et supprimer couleur si nécessaire
+            setTimeout(() => verifierEtSupprimerCouleur(key), 0);
+        }
     };
 
     const handleFormateurChange = (dayIndex, lieuIndex, creneau, selectIndex, value) => {
@@ -1864,7 +1908,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         const newList = [...(formateursParCase[key] || [])];
         newList[selectIndex] = value;
         setFormateursParCase(prev => ({ ...prev, [key]: newList }));
-        
+
         // NOUVEAU : Si on supprime un formateur (valeur vide), vérifier si case devient vide
         if (value === "") {
             setTimeout(() => verifierEtSupprimerCouleur(key), 0);
@@ -3199,8 +3243,11 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                             // Récupérer les formateurs et salariés de cette cellule
                                             const cellKey = seanceSelectionnee.cellKey;
                                             const formateursCell = formateursParCase[cellKey] || [];
-                                            const salarieId = salariesSelectionnes[cellKey];
-                                            const salarie = salarieId ? salaries.find(s => s.id === salarieId) : null;
+                                            const salariesIds = salariesSelectionnes[cellKey] || [];
+                                            const salariesCell = salariesIds
+                                                .filter(id => id)
+                                                .map(id => salaries.find(s => s.id === id))
+                                                .filter(s => s);
 
                                             return (
                                                 <>
@@ -3315,8 +3362,44 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         );
                                                     })}
 
-                                                    {/* Salarié */}
-                                                    {salarie && (() => {
+                                                    {/* Salariés */}
+                                                    {salariesIds.map((salarieId, index) => {
+                                                        const salarie = salaries.find(s => s.id === salarieId);
+
+                                                        // Si pas de salarié sélectionné, afficher un select
+                                                        if (!salarie) {
+                                                            return (
+                                                                <select
+                                                                    key={index}
+                                                                    value=""
+                                                                    onChange={(e) => {
+                                                                        const parts = seanceSelectionnee.cellKey.split('-');
+                                                                        const dayIndex = parseInt(parts[0]);
+                                                                        const lieuIndex = parseInt(parts[1]);
+                                                                        const creneau = parts[2];
+                                                                        handleSalarieChange(dayIndex, lieuIndex, creneau, index, e.target.value);
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%',
+                                                                        padding: '8px',
+                                                                        marginBottom: '6px',
+                                                                        border: '2px solid #10b981',
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '13px',
+                                                                        fontWeight: '500'
+                                                                    }}
+                                                                >
+                                                                    <option value="">Choisir un salarié...</option>
+                                                                    {salaries.map(s => (
+                                                                        <option key={s.id} value={s.id}>
+                                                                            {s.prenom} {s.nom} {s.initiales ? `(${s.initiales})` : ''}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            );
+                                                        }
+
+                                                        // Sinon afficher le salarié
                                                         // Compter le nombre d'apprenants associés à ce salarié
                                                         const listeAssociations = seanceDivisee
                                                             ? (partieActive === 1 ? associationsPartie1 : associationsPartie2)
@@ -3328,6 +3411,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
 
                                                         return (
                                                         <div
+                                                            key={salarie.id}
                                                             onClick={async () => {
                                                                 if (apprenantSelectionne) {
                                                                     // Créer association
@@ -3420,7 +3504,57 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             </div>
                                                         </div>
                                                         );
-                                                    })()}
+                                                    })}
+
+                                                    {/* Boutons pour gérer les salariés */}
+                                                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                                                        <button
+                                                            onClick={() => {
+                                                                const parts = seanceSelectionnee.cellKey.split('-');
+                                                                const dayIndex = parseInt(parts[0]);
+                                                                const lieuIndex = parseInt(parts[1]);
+                                                                const creneau = parts[2];
+                                                                handleAddSalarie(dayIndex, lieuIndex, creneau);
+                                                            }}
+                                                            style={{
+                                                                flex: 1,
+                                                                padding: '8px',
+                                                                backgroundColor: '#10b981',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '600',
+                                                                fontSize: '13px'
+                                                            }}
+                                                        >
+                                                            ➕ Ajouter un salarié
+                                                        </button>
+                                                        {salariesCell.length > 0 && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    const parts = seanceSelectionnee.cellKey.split('-');
+                                                                    const dayIndex = parseInt(parts[0]);
+                                                                    const lieuIndex = parseInt(parts[1]);
+                                                                    const creneau = parts[2];
+                                                                    handleRemoveSalarie(dayIndex, lieuIndex, creneau);
+                                                                }}
+                                                                style={{
+                                                                    flex: 1,
+                                                                    padding: '8px',
+                                                                    backgroundColor: '#ef4444',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    borderRadius: '6px',
+                                                                    cursor: 'pointer',
+                                                                    fontWeight: '600',
+                                                                    fontSize: '13px'
+                                                                }}
+                                                            >
+                                                                ➖ Retirer le dernier
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </>
                                             );
                                         })()}
