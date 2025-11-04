@@ -1605,8 +1605,23 @@ ${messageTransformation}
                                                     {estPeriode && (
                                                         <span> → {formatDate(changement.date_fin)}</span>
                                                     )}
+                                                    {/* ✅ NOUVEAU: Badge créneau */}
+                                                    {changement.creneau && (
+                                                        <span style={{
+                                                            marginLeft: '8px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 'bold',
+                                                            color: '#f59e0b',
+                                                            backgroundColor: '#fef3c7',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '4px',
+                                                            border: '1px solid #fcd34d'
+                                                        }}>
+                                                            {changement.creneau === 'M' ? 'M' : 'AM'}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                
+
                                                 <div style={{
                                                     fontSize: '14px',
                                                     color: '#6b7280'

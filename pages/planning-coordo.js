@@ -645,7 +645,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             
             const { data: absencesRes, error } = await supabase
                 .from('absences_formateurs')
-                .select('id, formateur_id, date_debut, date_fin, type, statut')
+                .select('id, formateur_id, date_debut, date_fin, type, statut, creneau')
                 .eq('statut', 'validé');
                 
             if (error) throw error;
@@ -671,7 +671,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             console.log('🔄 Rechargement complet données...');
             
             const [absencesRes, planningTypesRes] = await Promise.all([
-                supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut').eq('statut', 'validé'),
+                supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé'),
                 supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true)
             ]);
 
@@ -741,7 +741,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                     supabase.from('users').select('id, prenom, nom, role').eq('role', 'apprenant').eq('archive', false),
                     supabase.from('lieux').select('id, nom, couleur, initiale').eq('archive', false),
                     supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true),
-                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut').eq('statut', 'validé')
+                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé')
                 ]);
 
                 if (salariesRes.data) setSalaries(salariesRes.data);
@@ -804,40 +804,67 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         };
     }, [user]);
 
-    // ☆☆☆ FONCTION CORRIGÉE - PRIORITÉ DISPO EXCEPTIONNELLE ☆☆☆
-    const isFormateurAbsent = (formateurId, dateStr) => {
+    // ☆☆☆ FONCTION CORRIGÉE - PRIORITÉ DISPO EXCEPTIONNELLE + SUPPORT CRÉNEAUX ☆☆☆
+    const isFormateurAbsent = (formateurId, dateStr, creneau = null) => {
         // D'ABORD vérifier s'il a une dispo exceptionnelle (priorité absolue)
         const dispoExcept = absencesValidees.find(absence => {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type !== 'formation') return false;
-            
+
             const dateDebut = new Date(absence.date_debut + 'T00:00:00');
             const dateFin = new Date(absence.date_fin + 'T23:59:59');
             const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+
+            const dateMatch = dateCheck >= dateDebut && dateCheck <= dateFin;
+            if (!dateMatch) return false;
+
+            // ✅ NOUVEAU: Vérifier créneau si spécifié
+            if (creneau && absence.creneau) {
+                const creneauDB = creneau === 'Matin' ? 'M' : 'AM';
+                return absence.creneau === creneauDB;
+            }
+
+            return true;
         });
-        
+
         // Si dispo exceptionnelle trouvée = PAS absent !
         if (dispoExcept) {
-            console.log(`✅ PRIORITÉ DISPO EXCEPT: formateur ${formateurId} disponible le ${dateStr} !`);
+            console.log(`✅ PRIORITÉ DISPO EXCEPT: formateur ${formateurId} disponible le ${dateStr}${creneau ? ' (' + creneau + ')' : ''} !`);
             return false;
         }
-        
+
         // ENSUITE chercher les vraies absences
         const absenceJour = absencesValidees.find(absence => {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type === 'formation') return false; // Dispo except n'est pas absence
-            
+
             const dateDebut = new Date(absence.date_debut + 'T00:00:00');
             const dateFin = new Date(absence.date_fin + 'T23:59:59');
             const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+
+            const dateMatch = dateCheck >= dateDebut && dateCheck <= dateFin;
+            if (!dateMatch) return false;
+
+            // ✅ NOUVEAU: Si absence a un créneau spécifique, vérifier correspondance
+            if (absence.creneau && creneau) {
+                const creneauDB = creneau === 'Matin' ? 'M' : 'AM';
+                const creneauMatch = absence.creneau === creneauDB;
+                console.log(`🕐 Créneau absence: ${absence.creneau}, créneau actuel: ${creneauDB}, match: ${creneauMatch}`);
+                return creneauMatch;
+            }
+
+            // ✅ Si absence sans créneau (journée entière), toujours vrai
+            if (!absence.creneau) {
+                console.log(`📅 Absence journée entière pour ${formateurId} le ${dateStr}`);
+                return true;
+            }
+
+            // ✅ Si pas de créneau demandé mais absence a un créneau, pas d'absence
+            return false;
         });
 
         if (absenceJour) {
-            console.log(`🚫 ${formateurId} absent le ${dateStr} - retiré par ROI`);
+            console.log(`🚫 ${formateurId} absent le ${dateStr}${creneau ? ' (' + creneau + ')' : ''} - retiré par ROI`);
         }
 
         return !!absenceJour;
@@ -921,9 +948,9 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         ).map(f => {
             const planningType = formateursAvecPlanningType.find(pt => pt.formateur_id === f.id);
             
-            // ☆☆☆ LOGIQUE ROI - ABSENCE GAGNE TOUJOURS ☆☆☆
-            if (isFormateurAbsent(f.id, dateStr)) {
-                console.log(`🚫 ${f.prenom} absent le ${dateStr} - retiré par ROI`);
+            // ☆☆☆ LOGIQUE ROI - ABSENCE GAGNE TOUJOURS + SUPPORT CRÉNEAUX ☆☆☆
+            if (isFormateurAbsent(f.id, dateStr, creneau)) {
+                console.log(`🚫 ${f.prenom} absent le ${dateStr} (${creneau}) - retiré par ROI`);
                 return null;
             }
             
@@ -946,9 +973,9 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             };
         }).filter(f => f !== null);
 
-        // ☆☆☆ LOGIQUE ROI CORRIGÉE - DISPO EXCEPT TOUJOURS TRAITÉES ☆☆☆
+        // ☆☆☆ LOGIQUE ROI CORRIGÉE - DISPO EXCEPT TOUJOURS TRAITÉES + SUPPORT CRÉNEAUX ☆☆☆
         const formateursSansPlanningAvecStatut = (filtreDisponibilite === 'toutes' || filtreDisponibilite === 'exceptionnelles')
-            ? formateursSansPlanningType.filter(f => !isFormateurAbsent(f.id, dateStr))
+            ? formateursSansPlanningType.filter(f => !isFormateurAbsent(f.id, dateStr, creneau))
                 .map(f => {
                     // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT MÊME SANS PLANNING TYPE ☆☆☆
                     if (hasDispoExceptionnelle(f.id, dateStr)) {
@@ -2056,9 +2083,9 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         const salarieId = salariesSelectionnes[key] || null;
                         
                         if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
-                            // Filtrer les formateurs non absents pour la semaine suivante
+                            // Filtrer les formateurs non absents pour la semaine suivante (avec support créneaux)
                             const formateursDisponibles = formateursIds.filter(formateurId => {
-                                const estAbsent = isFormateurAbsent(formateurId, dateDestination);
+                                const estAbsent = isFormateurAbsent(formateurId, dateDestination, creneau);
                                 if (estAbsent) formateursExclusPourAbsence++;
                                 return !estAbsent;
                             });

@@ -201,6 +201,7 @@ export default function MonPlanningHebdo() {
                     type,
                     statut,
                     motif,
+                    creneau,
                     created_at
                 `)
                 .eq('formateur_id', user.id)
@@ -334,6 +335,7 @@ export default function MonPlanningHebdo() {
                     type,
                     statut,
                     motif,
+                    creneau,
                     created_at
                 `)
                 .eq('formateur_id', user.id)
@@ -411,21 +413,36 @@ export default function MonPlanningHebdo() {
                 // Vérifier d'abord les absences validées pour ce jour
                 const dateJour = weekDates[jours.indexOf(jour)]
                 const dateString = dateJour.toISOString().split('T')[0]
-                
+
                 console.log(`📅 Date recherchée: ${dateString}`)
-                
+
+                // ✅ NOUVEAU: Vérifier absence avec support des créneaux M/AM
                 const absenceJour = absences.find(abs => {
                     const debut = new Date(abs.date_debut)
                     const fin = new Date(abs.date_fin)
                     const current = new Date(dateString)
-                    
-                    console.log(`🔧 Vérification absence: ${abs.date_debut} - ${abs.date_fin} (type: ${abs.type})`)
-                    
-                    return current >= debut && current <= fin
+
+                    // Vérifier si la date correspond
+                    const dateMatch = current >= debut && current <= fin
+                    if (!dateMatch) return false
+
+                    console.log(`🔧 Vérification absence: ${abs.date_debut} - ${abs.date_fin} (type: ${abs.type}, créneau: ${abs.creneau || 'journée'})`)
+
+                    // ✅ Si absence a un créneau spécifique, vérifier correspondance
+                    if (abs.creneau) {
+                        const creneauDB = creneau === 'Matin' ? 'M' : 'AM'
+                        const creneauMatch = abs.creneau === creneauDB
+                        console.log(`🕐 Créneau absence: ${abs.creneau}, créneau actuel: ${creneauDB}, match: ${creneauMatch}`)
+                        return creneauMatch
+                    }
+
+                    // ✅ Si absence sans créneau (journée entière), toujours vrai
+                    console.log(`📅 Absence journée entière (pas de créneau spécifique)`)
+                    return true
                 })
 
                 if (absenceJour) {
-                    console.log(`✅ Absence trouvée pour ${jour}:`, absenceJour.type)
+                    console.log(`✅ Absence trouvée pour ${jour} ${creneau}:`, absenceJour.type, absenceJour.creneau || '(journée)')
                 }
 
                 // ★★★ LOGIQUE ROI - PRIORITÉ DISPO EXCEPTIONNELLE ABSOLUE ★★★
