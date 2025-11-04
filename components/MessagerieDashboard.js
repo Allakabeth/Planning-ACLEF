@@ -18,6 +18,17 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   const [filtreActif, setFiltreActif] = useState('tous')
   const [formateurFiltre, setFormateurFiltre] = useState('tous')
 
+  // ✅ NOUVEAU: États pour la configuration du nettoyage automatique
+  const [showConfig, setShowConfig] = useState(false)
+  const [config, setConfig] = useState([])
+  const [loadingConfig, setLoadingConfig] = useState(false)
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [previewStats, setPreviewStats] = useState(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
+  const [logs, setLogs] = useState([])
+  const [showLogs, setShowLogs] = useState(false)
+
   // ✅ FONCTION: Convertir date ISO → format français
   const formatDateFr = (dateISO) => {
     if (!dateISO) return ''
@@ -28,6 +39,13 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   useEffect(() => {
     chargerDonnees()
   }, [])
+
+  // ✅ NOUVEAU: Charger la configuration du nettoyage automatique
+  useEffect(() => {
+    if (showConfig) {
+      chargerConfiguration()
+    }
+  }, [showConfig])
 
   const chargerDonnees = async () => {
     try {
@@ -171,11 +189,142 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
       alert('🗑️ Message supprimé définitivement !')
       chargerDonnees()
       setSelectedMessage(null)
-      
+
     } catch (error) {
       console.error('Erreur suppression:', error)
       alert('Erreur suppression: ' + error.message)
     }
+  }
+
+  // ✅ NOUVEAU: Charger la configuration du nettoyage automatique
+  const chargerConfiguration = async () => {
+    try {
+      setLoadingConfig(true)
+      const response = await fetch('/api/config-messagerie')
+      const data = await response.json()
+
+      if (response.ok) {
+        setConfig(data.config || [])
+      } else {
+        console.error('Erreur chargement config:', data.error)
+      }
+    } catch (error) {
+      console.error('Erreur chargement configuration:', error)
+    } finally {
+      setLoadingConfig(false)
+    }
+  }
+
+  // ✅ NOUVEAU: Mettre à jour un paramètre de configuration
+  const mettreAJourConfig = async (cle, valeur) => {
+    try {
+      setSavingConfig(true)
+      const response = await fetch('/api/config-messagerie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cle, valeur })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert('✅ Configuration mise à jour avec succès !')
+        chargerConfiguration()
+        // Rafraîchir l'aperçu si affiché
+        if (previewStats) {
+          obtenirApercu()
+        }
+      } else {
+        alert('❌ Erreur: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Erreur mise à jour config:', error)
+      alert('❌ Erreur lors de la mise à jour')
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
+  // ✅ NOUVEAU: Obtenir un aperçu des messages concernés
+  const obtenirApercu = async () => {
+    try {
+      setLoadingPreview(true)
+      const response = await fetch('/api/auto-cleanup-messages?action=preview')
+      const data = await response.json()
+
+      if (response.ok) {
+        setPreviewStats(data)
+      } else {
+        console.error('Erreur aperçu:', data.error)
+        alert('❌ Erreur lors de l\'aperçu')
+      }
+    } catch (error) {
+      console.error('Erreur aperçu:', error)
+      alert('❌ Erreur lors de l\'aperçu')
+    } finally {
+      setLoadingPreview(false)
+    }
+  }
+
+  // ✅ NOUVEAU: Exécuter le nettoyage maintenant
+  const executerNettoyage = async () => {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir exécuter le nettoyage automatique maintenant ?\n\nCette action archivera et/ou supprimera des messages selon la configuration.')) {
+      return
+    }
+
+    try {
+      setCleaning(true)
+      const response = await fetch('/api/auto-cleanup-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ executeur: 'admin_manuel' })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        alert(`${data.message}`)
+        chargerDonnees() // Recharger les messages
+        setPreviewStats(null) // Reset l'aperçu
+        chargerLogs() // Recharger les logs
+      } else {
+        alert('❌ Erreur: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Erreur nettoyage:', error)
+      alert('❌ Erreur lors du nettoyage')
+    } finally {
+      setCleaning(false)
+    }
+  }
+
+  // ✅ NOUVEAU: Charger l'historique des nettoyages
+  const chargerLogs = async () => {
+    try {
+      const response = await fetch('/api/config-messagerie?logs=true')
+      const data = await response.json()
+
+      if (response.ok) {
+        setLogs(data.logs || [])
+      } else {
+        console.error('Erreur chargement logs:', data.error)
+      }
+    } catch (error) {
+      console.error('Erreur chargement logs:', error)
+    }
+  }
+
+  // ✅ NOUVEAU: Formater un timestamp pour l'affichage
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    return date.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
 
   // ✅ MODIFIÉ: Fonction de validation avec auto-archivage
@@ -1077,6 +1226,325 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ✅ NOUVEAU: Section Configuration du nettoyage automatique */}
+      <div style={{
+        marginTop: '20px',
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        border: '1px solid #e5e7eb',
+        overflow: 'hidden'
+      }}>
+        {/* En-tête */}
+        <div
+          onClick={() => setShowConfig(!showConfig)}
+          style={{
+            padding: '15px',
+            backgroundColor: '#f59e0b',
+            color: 'white',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>⚙️</span>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
+              Configuration du nettoyage automatique
+            </h3>
+          </div>
+          <span style={{ fontSize: '20px', fontWeight: 'bold' }}>
+            {showConfig ? '▼' : '▶'}
+          </span>
+        </div>
+
+        {/* Contenu dépliable */}
+        {showConfig && (
+          <div style={{ padding: '20px' }}>
+            {loadingConfig ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
+                ⏳ Chargement de la configuration...
+              </div>
+            ) : (
+              <>
+                {/* Paramètres de configuration */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gap: '15px',
+                  marginBottom: '20px'
+                }}>
+                  {config.map(param => (
+                    <div
+                      key={param.cle}
+                      style={{
+                        padding: '15px',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb'
+                      }}
+                    >
+                      <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '5px' }}>
+                        {param.description}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          value={param.valeur}
+                          onChange={(e) => {
+                            const nouvelleValeur = parseInt(e.target.value, 10)
+                            if (!isNaN(nouvelleValeur) && nouvelleValeur >= 0) {
+                              mettreAJourConfig(param.cle, nouvelleValeur)
+                            }
+                          }}
+                          disabled={savingConfig}
+                          style={{
+                            flex: 1,
+                            padding: '8px',
+                            borderRadius: '6px',
+                            border: '1px solid #d1d5db',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            textAlign: 'center'
+                          }}
+                        />
+                        <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                          {param.unite}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Boutons d'action */}
+                <div style={{
+                  display: 'flex',
+                  gap: '10px',
+                  marginBottom: '20px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={obtenirApercu}
+                    disabled={loadingPreview}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: loadingPreview ? 'not-allowed' : 'pointer',
+                      opacity: loadingPreview ? 0.6 : 1
+                    }}
+                  >
+                    {loadingPreview ? '⏳ Chargement...' : '👁️ Aperçu des messages concernés'}
+                  </button>
+
+                  <button
+                    onClick={executerNettoyage}
+                    disabled={cleaning}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: cleaning ? 'not-allowed' : 'pointer',
+                      opacity: cleaning ? 0.6 : 1
+                    }}
+                  >
+                    {cleaning ? '⏳ Nettoyage...' : '🧹 Nettoyer maintenant'}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowLogs(!showLogs)
+                      if (!showLogs && logs.length === 0) {
+                        chargerLogs()
+                      }
+                    }}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showLogs ? '📊 Masquer l\'historique' : '📊 Afficher l\'historique'}
+                  </button>
+                </div>
+
+                {/* Aperçu des statistiques */}
+                {previewStats && (
+                  <div style={{
+                    padding: '15px',
+                    backgroundColor: '#eff6ff',
+                    border: '2px solid #3b82f6',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <h4 style={{
+                      margin: '0 0 15px 0',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      color: '#1e40af'
+                    }}>
+                      📊 Aperçu des messages concernés
+                    </h4>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '10px'
+                    }}>
+                      <div style={{
+                        padding: '10px',
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #dbeafe'
+                      }}>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
+                          Messages non lus à archiver
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#dc2626' }}>
+                          {previewStats.statistiques.messagesNonLusAArchiver}
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '10px',
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #dbeafe'
+                      }}>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
+                          Messages lus à archiver
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#3b82f6' }}>
+                          {previewStats.statistiques.messagesLusAArchiver}
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '10px',
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #dbeafe'
+                      }}>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
+                          Messages traités à archiver
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#059669' }}>
+                          {previewStats.statistiques.messagesTraitesAArchiver}
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '10px',
+                        backgroundColor: 'white',
+                        borderRadius: '6px',
+                        border: '1px solid #dbeafe'
+                      }}>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>
+                          Messages archivés à supprimer
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f59e0b' }}>
+                          {previewStats.statistiques.messagesArchivesASupprimer}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{
+                      marginTop: '10px',
+                      padding: '10px',
+                      backgroundColor: 'white',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      color: '#6b7280'
+                    }}>
+                      <strong>Total :</strong> {previewStats.statistiques.totalAArchiver} message(s) seront archivés
+                      • {previewStats.statistiques.totalASupprimer} message(s) seront supprimés définitivement
+                    </div>
+                  </div>
+                )}
+
+                {/* Historique des nettoyages */}
+                {showLogs && (
+                  <div style={{
+                    padding: '15px',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <h4 style={{
+                      margin: '0 0 15px 0',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      color: '#374151'
+                    }}>
+                      📜 Historique des nettoyages (20 derniers)
+                    </h4>
+                    {logs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
+                        Aucun nettoyage effectué pour le moment
+                      </div>
+                    ) : (
+                      <div style={{
+                        maxHeight: '300px',
+                        overflow: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}>
+                        {logs.map(log => (
+                          <div
+                            key={log.id}
+                            style={{
+                              padding: '10px',
+                              backgroundColor: 'white',
+                              borderRadius: '6px',
+                              border: '1px solid #e5e7eb',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '5px'
+                            }}>
+                              <span style={{ fontWeight: '600', color: '#374151' }}>
+                                {formatTimestamp(log.date_execution)}
+                              </span>
+                              <span style={{
+                                padding: '2px 6px',
+                                backgroundColor: log.executeur === 'auto' ? '#dbeafe' : '#fef3c7',
+                                color: log.executeur === 'auto' ? '#1e40af' : '#92400e',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: '600'
+                              }}>
+                                {log.executeur === 'auto' ? 'AUTO' : 'MANUEL'}
+                              </span>
+                            </div>
+                            <div style={{ color: '#6b7280' }}>
+                              ✅ {log.messages_archives} archivé(s) • 🗑️ {log.messages_supprimes} supprimé(s)
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
