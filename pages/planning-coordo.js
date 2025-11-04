@@ -870,17 +870,35 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         return !!absenceJour;
     };
 
-    // Fonction dispo exceptionnelle corrigée
-    const hasDispoExceptionnelle = (formateurId, dateStr) => {
+    // Fonction dispo exceptionnelle corrigée + SUPPORT CRÉNEAUX
+    const hasDispoExceptionnelle = (formateurId, dateStr, creneau = null) => {
         const dispoJour = absencesValidees.find(absence => {
             if (absence.formateur_id !== formateurId) return false;
             if (absence.type !== 'formation') return false;
-            
+
             const dateDebut = new Date(absence.date_debut + 'T00:00:00');
             const dateFin = new Date(absence.date_fin + 'T23:59:59');
             const dateCheck = new Date(dateStr + 'T12:00:00');
-            
-            return dateCheck >= dateDebut && dateCheck <= dateFin;
+
+            const dateMatch = dateCheck >= dateDebut && dateCheck <= dateFin;
+            if (!dateMatch) return false;
+
+            // ✅ NOUVEAU: Si dispo except a un créneau spécifique, vérifier correspondance
+            if (absence.creneau && creneau) {
+                const creneauDB = creneau === 'Matin' ? 'M' : 'AM';
+                const creneauMatch = absence.creneau === creneauDB;
+                console.log(`🕐 Créneau dispo except: ${absence.creneau}, créneau actuel: ${creneauDB}, match: ${creneauMatch}`);
+                return creneauMatch;
+            }
+
+            // ✅ Si dispo except sans créneau (journée entière), toujours vrai
+            if (!absence.creneau) {
+                console.log(`📅 Dispo exceptionnelle journée entière pour ${formateurId} le ${dateStr}`);
+                return true;
+            }
+
+            // ✅ Si pas de créneau demandé mais dispo a un créneau, pas de dispo
+            return false;
         });
 
         return !!dispoJour;
@@ -898,9 +916,9 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         const weekDates = getWeekDates(currentDate);
         const dateStr = weekDates[dayIndex];
 
-        // ☆☆☆ PRIORITÉ ABSOLUE : DISPO EXCEPTIONNELLES D'ABORD ☆☆☆
+        // ☆☆☆ PRIORITÉ ABSOLUE : DISPO EXCEPTIONNELLES D'ABORD + SUPPORT CRÉNEAUX ☆☆☆
         const formateursDispoExceptionnelle = formateurs
-            .filter(f => hasDispoExceptionnelle(f.id, dateStr))
+            .filter(f => hasDispoExceptionnelle(f.id, dateStr, creneau))
             .map(f => ({
                 ...f,
                 statut: 'dispo_except',
@@ -954,11 +972,11 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                 return null;
             }
             
-            // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT PRIORITAIRE ☆☆☆
-            if (hasDispoExceptionnelle(f.id, dateStr)) {
-                console.log(`✅ ${f.prenom} dispo exceptionnelle le ${dateStr} - ajouté par ROI`);
-                return { 
-                    ...f, 
+            // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT PRIORITAIRE + SUPPORT CRÉNEAUX ☆☆☆
+            if (hasDispoExceptionnelle(f.id, dateStr, creneau)) {
+                console.log(`✅ ${f.prenom} dispo exceptionnelle le ${dateStr} (${creneau}) - ajouté par ROI`);
+                return {
+                    ...f,
                     statut: 'dispo_except',
                     lieuSpecifique: false,
                     source: 'exception_validee_roi'
@@ -977,11 +995,11 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         const formateursSansPlanningAvecStatut = (filtreDisponibilite === 'toutes' || filtreDisponibilite === 'exceptionnelles')
             ? formateursSansPlanningType.filter(f => !isFormateurAbsent(f.id, dateStr, creneau))
                 .map(f => {
-                    // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT MÊME SANS PLANNING TYPE ☆☆☆
-                    if (hasDispoExceptionnelle(f.id, dateStr)) {
-                        console.log(`✅ ${f.prenom} dispo exceptionnelle le ${dateStr} (sans planning) - ajouté par ROI`);
-                        return { 
-                            ...f, 
+                    // ☆☆☆ LOGIQUE ROI - DISPO EXCEPT MÊME SANS PLANNING TYPE + SUPPORT CRÉNEAUX ☆☆☆
+                    if (hasDispoExceptionnelle(f.id, dateStr, creneau)) {
+                        console.log(`✅ ${f.prenom} dispo exceptionnelle le ${dateStr} (${creneau}, sans planning) - ajouté par ROI`);
+                        return {
+                            ...f,
                             statut: 'dispo_except',
                             lieuSpecifique: false,
                             source: 'exception_validee_roi'
