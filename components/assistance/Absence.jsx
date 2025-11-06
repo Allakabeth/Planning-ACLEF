@@ -190,17 +190,24 @@ export default function Absence({
                     nom: 'Planning habituel'
                 }
             case 'dispo_except':
-                return { 
-                    backgroundColor: '#f59e0b', 
-                    color: 'white', 
+                return {
+                    backgroundColor: '#f59e0b',
+                    color: 'white',
                     label: 'EXCEPT',
                     nom: 'Dispo exceptionnelle'
                 }
+            case 'remettre_dispo':
+                return {
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    label: 'OK',
+                    nom: 'Remettre disponible'
+                }
             case 'libre':
             default:
-                return { 
-                    backgroundColor: '#d1d5db', 
-                    color: '#374151', 
+                return {
+                    backgroundColor: '#d1d5db',
+                    color: '#374151',
                     label: '',
                     nom: 'Libre'
                 }
@@ -404,30 +411,18 @@ export default function Absence({
 
             // Détecter les modifications
             const modificationsDetectees = []
-            
+
             Object.keys(planningModifie).forEach(dateStr => {
                 const statutOriginal = planningOriginal[dateStr]
                 const statutModifie = planningModifie[dateStr]
-                
+
                 // Si la case a été modifiée
                 if (statutOriginal !== statutModifie) {
-                    let type = null
-                    
-                    if (statutModifie === 'absent') {
-                        type = 'personnel'
-                    } else if (statutModifie === 'dispo') {
-                        type = 'formation'
-                    }
-                    
-                    // Ajouter seulement si c'est un type reconnu
-                    if (type) {
-                        modificationsDetectees.push({
-                            date: dateStr,
-                            type: type,
-                            statutOriginal: statutOriginal,
-                            statutModifie: statutModifie
-                        })
-                    }
+                    modificationsDetectees.push({
+                        date: dateStr,
+                        statut: statutModifie,
+                        statutOriginal: statutOriginal
+                    })
                 }
             })
 
@@ -439,7 +434,39 @@ export default function Absence({
 
             console.log(`📤 ${modificationsDetectees.length} modifications détectées:`, modificationsDetectees)
 
-            // ✅ NOUVEAU: Déterminer le créneau
+            // ✅ NOUVEAU : Si mode "remettre disponible", supprimer les absences
+            const remettreDispoCount = modificationsDetectees.filter(m => m.statut === 'remettre_dispo').length
+
+            if (remettreDispoCount > 0) {
+                console.log(`🟢 ${remettreDispoCount} dates à remettre disponibles`)
+
+                for (const modif of modificationsDetectees) {
+                    if (modif.statut === 'remettre_dispo') {
+                        // Supprimer les absences existantes pour cette date
+                        const { error: deleteError } = await supabase
+                            .from('absences_formateurs')
+                            .delete()
+                            .eq('formateur_id', formateurId)
+                            .eq('date_debut', modif.date)
+
+                        if (deleteError) {
+                            console.error('Erreur suppression absence:', deleteError)
+                        } else {
+                            console.log(`✅ Absence supprimée pour ${modif.date}`)
+                        }
+                    }
+                }
+
+                onSuccess?.(`✅ ${remettreDispoCount} date(s) remise(s) en disponible !`)
+
+                // ✅ RECHARGER le planning pour afficher les changements
+                await loadPlanningData()
+
+                setEnvoiEnCours(false)
+                return
+            }
+
+            // ✅ EXISTANT : Code normal pour absent/dispo_except (INCHANGÉ)
             let creneauValue = null; // Par défaut : journée entière
 
             if (creneauMatin && !creneauAM) {
@@ -452,17 +479,19 @@ export default function Absence({
 
             console.log(`🕐 Créneau sélectionné: ${creneauValue || 'journée entière'}`);
 
-            // Créer un enregistrement par jour modifié
-            const enregistrementsACreer = modificationsDetectees.map(modif => ({
-                formateur_id: formateurId,
-                date_debut: modif.date,
-                date_fin: modif.date, // Même date pour jour par jour
-                type: modif.type,
-                statut: 'en_attente',
-                motif: null, // Optionnel, peut être ajouté plus tard
-                creneau: creneauValue, // ✅ AJOUT DU CRÉNEAU
-                created_at: new Date().toISOString()
-            }))
+            // Créer un enregistrement par jour modifié (filtrer remettre_dispo)
+            const enregistrementsACreer = modificationsDetectees
+                .filter(modif => modif.statut === 'absent' || modif.statut === 'dispo')
+                .map(modif => ({
+                    formateur_id: formateurId,
+                    date_debut: modif.date,
+                    date_fin: modif.date, // Même date pour jour par jour
+                    type: modif.statut === 'absent' ? 'personnel' : 'formation',
+                    statut: 'en_attente',
+                    motif: null, // Optionnel, peut être ajouté plus tard
+                    creneau: creneauValue, // ✅ AJOUT DU CRÉNEAU
+                    created_at: new Date().toISOString()
+                }))
 
             // Insérer en BDD
             const { data: resultats, error: erreurInsert } = await supabase
@@ -478,7 +507,7 @@ export default function Absence({
 
             // Succès !
             onSuccess?.(`✅ Demande envoyée ! ${modificationsDetectees.length} modification(s) pour ${formateurData.prenom} ${formateurData.nom}`)
-            
+
             // Remettre le planning à l'état d'origine après envoi réussi
             setPlanningModifie({...planningOriginal})
             setHistoriqueModi([])
@@ -743,6 +772,22 @@ export default function Absence({
                                 }}
                             >
                                 🟡 DISPO EXCEPT.
+                            </button>
+
+                            <button
+                                onClick={() => setModeSelection('remettre_dispo')}
+                                style={{
+                                    padding: '12px',
+                                    borderRadius: '8px',
+                                    border: modeSelection === 'remettre_dispo' ? '3px solid #fbbf24' : '2px solid #10b981',
+                                    backgroundColor: '#10b981',
+                                    color: 'white',
+                                    fontWeight: 'bold',
+                                    fontSize: '14px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                🟢 REMETTRE DISPONIBLE
                             </button>
                         </div>
                     </div>
