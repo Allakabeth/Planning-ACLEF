@@ -1762,7 +1762,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         id,
                         encadrant_id,
                         apprenant_id,
-                        notes_pedagogiques
+                        notes_pedagogiques,
+                        salle
                     )
                 `)
                 .eq('date', date)
@@ -1779,7 +1780,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         id,
                         encadrant_id,
                         apprenant_id,
-                        notes_pedagogiques
+                        notes_pedagogiques,
+                        salle
                     )
                 `)
                 .eq('date', date)
@@ -1796,7 +1798,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         id,
                         encadrant_id,
                         apprenant_id,
-                        notes_pedagogiques
+                        notes_pedagogiques,
+                        salle
                     )
                 `)
                 .eq('date', date)
@@ -1824,7 +1827,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         id: a.id,
                         encadrant: encadrant,
                         apprenant: apprenant,
-                        notes: a.notes_pedagogiques || ''
+                        notes: a.notes_pedagogiques || '',
+                        salle: a.salle || null
                     };
                 }).filter(a => a.encadrant && a.apprenant);
             };
@@ -1855,7 +1859,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     seance_id: seanceId,
                     encadrant_id: association.encadrant.id,
                     apprenant_id: association.apprenant.id,
-                    notes_pedagogiques: association.notes || ''
+                    notes_pedagogiques: association.notes || '',
+                    salle: association.salle || null
                 })
                 .select('id')
                 .single();
@@ -1886,6 +1891,22 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
             return true;
         } catch (error) {
             console.error('Erreur modifierNotesAssociation:', error);
+            return false;
+        }
+    };
+
+    // Modifier la salle d'une association
+    const modifierSalleAssociation = async (associationId, salle) => {
+        try {
+            const { error } = await supabase
+                .from('associations_pedagogiques')
+                .update({ salle: salle || null })
+                .eq('id', associationId);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Erreur modifierSalleAssociation:', error);
             return false;
         }
     };
@@ -3322,7 +3343,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             id: Date.now(),
                                                             encadrant: formateur,
                                                             apprenant: apprenantSelectionne,
-                                                            notes: ''
+                                                            notes: '',
+                                                            salle: null
                                                         };
 
                                                         // Déterminer la partie (1, 2, ou null)
@@ -3466,7 +3488,8 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                         id: Date.now(),
                                                                         encadrant: salarie,
                                                                         apprenant: apprenantSelectionne,
-                                                                        notes: ''
+                                                                        notes: '',
+                                                                        salle: null
                                                                     };
 
                                                                     // Déterminer la partie (1, 2, ou null)
@@ -3708,6 +3731,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                 printWindow.document.write('.assoc-item { display: flex; align-items: center; padding: 12px; margin-bottom: 8px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; }');
                                                 printWindow.document.write('.encadrant { font-weight: 600; color: #374151; }');
                                                 printWindow.document.write('.apprenant { color: #3b82f6; font-weight: 500; margin-left: 12px; }');
+                                                printWindow.document.write('.salle { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: 8px; font-size: 12px; }');
                                                 printWindow.document.write('.notes { font-style: italic; color: #6b7280; margin-left: 12px; }');
                                                 printWindow.document.write('button { display: none !important; }');
                                                 printWindow.document.write('</style>');
@@ -3724,6 +3748,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
                                                         printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
                                                         printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.salle) {
+                                                            printWindow.document.write('<span class="salle">Salle ' + assoc.salle + '</span>');
+                                                        }
                                                         if (assoc.notes) {
                                                             printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
                                                         }
@@ -3736,6 +3763,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
                                                         printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
                                                         printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.salle) {
+                                                            printWindow.document.write('<span class="salle">Salle ' + assoc.salle + '</span>');
+                                                        }
                                                         if (assoc.notes) {
                                                             printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
                                                         }
@@ -3748,6 +3778,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         printWindow.document.write('<span class="encadrant">' + assoc.encadrant.prenom + ' ' + assoc.encadrant.nom + '</span>');
                                                         printWindow.document.write('<span style="color: #9ca3af; margin: 0 8px;">→</span>');
                                                         printWindow.document.write('<span class="apprenant">' + assoc.apprenant.prenom + ' ' + assoc.apprenant.nom + '</span>');
+                                                        if (assoc.salle) {
+                                                            printWindow.document.write('<span class="salle">Salle ' + assoc.salle + '</span>');
+                                                        }
                                                         if (assoc.notes) {
                                                             printWindow.document.write('<span class="notes">"' + assoc.notes + '"</span>');
                                                         }
@@ -3817,6 +3850,53 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         <span className="apprenant" style={{ color: '#3b82f6', fontWeight: '500' }}>
                                                             {assoc.apprenant.prenom} {assoc.apprenant.nom}
                                                         </span>
+                                                        <select
+                                                            value={assoc.salle || ''}
+                                                            onChange={async (e) => {
+                                                                const nouvelleSalle = e.target.value ? parseInt(e.target.value) : null;
+                                                                // Sauvegarder en base de données
+                                                                const success = await modifierSalleAssociation(assoc.id, nouvelleSalle);
+
+                                                                if (success) {
+                                                                    // Mettre à jour l'état local
+                                                                    if (seanceDivisee) {
+                                                                        const newAssocs = partieActive === 1
+                                                                            ? [...associationsPartie1]
+                                                                            : [...associationsPartie2];
+                                                                        newAssocs[index].salle = nouvelleSalle;
+                                                                        if (partieActive === 1) {
+                                                                            setAssociationsPartie1(newAssocs);
+                                                                        } else {
+                                                                            setAssociationsPartie2(newAssocs);
+                                                                        }
+                                                                    } else {
+                                                                        const newAssocs = [...associations];
+                                                                        newAssocs[index].salle = nouvelleSalle;
+                                                                        setAssociations(newAssocs);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                padding: '4px 8px',
+                                                                fontSize: '12px',
+                                                                backgroundColor: assoc.salle ? '#dcfce7' : '#f3f4f6',
+                                                                border: '1px solid #d1d5db',
+                                                                borderRadius: '4px',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '500',
+                                                                minWidth: '90px'
+                                                            }}
+                                                        >
+                                                            <option value="">-- Salle --</option>
+                                                            <option value="1">Salle 1</option>
+                                                            <option value="2">Salle 2</option>
+                                                            <option value="3">Salle 3</option>
+                                                            <option value="4">Salle 4</option>
+                                                            <option value="5">Salle 5</option>
+                                                            <option value="6">Salle 6</option>
+                                                            <option value="7">Salle 7</option>
+                                                            <option value="8">Salle 8</option>
+                                                        </select>
                                                         <button
                                                             onClick={async () => {
                                                                 const notes = prompt('Notes pédagogiques pour ' + assoc.apprenant.prenom + ' :', assoc.notes);
