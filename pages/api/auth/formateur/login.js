@@ -86,19 +86,36 @@ export default async function handler(req, res) {
             // Fallback : première connexion avec nom (Martínez → martinez)
             const nomNormalized = normalizeForEmail(formateur.nom)
             const passwordNormalized = normalizeForEmail(password)
-            
+
             console.log(`🔐 [LOGIN-DEBUG] Comparaison normalisée:`)
             console.log(`🔐 [LOGIN-DEBUG]   nom "${formateur.nom}" → "${nomNormalized}"`)
             console.log(`🔐 [LOGIN-DEBUG]   password "${password}" → "${passwordNormalized}"`)
             console.log(`🔐 [LOGIN-DEBUG]   match: ${passwordNormalized === nomNormalized}`)
-            
+
             if (passwordNormalized !== nomNormalized) {
-                return res.status(401).json({ 
-                    error: 'Mot de passe incorrect' 
+                return res.status(401).json({
+                    error: 'Mot de passe incorrect'
                 })
             }
             passwordValid = true
-            showEncouragement = true // Encourager à changer le mot de passe
+
+            // Encourager à changer le mot de passe seulement si moins de 3 rappels
+            const remindersCount = formateur.password_change_reminders || 0
+            console.log(`🔐 [LOGIN-DEBUG] Rappels changement MDP: ${remindersCount}/3`)
+
+            if (remindersCount < 3) {
+                showEncouragement = true
+
+                // Incrémenter le compteur
+                await supabase
+                    .from('users')
+                    .update({ password_change_reminders: remindersCount + 1 })
+                    .eq('id', formateur.id)
+
+                console.log(`🔐 [LOGIN-DEBUG] Compteur incrémenté: ${remindersCount + 1}/3`)
+            } else {
+                console.log(`🔐 [LOGIN-DEBUG] Limite de rappels atteinte (3/3) - pas d'encouragement`)
+            }
         }
 
         // Générer le token
