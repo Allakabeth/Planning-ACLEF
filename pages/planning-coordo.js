@@ -2939,7 +2939,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 cursor: canEdit ? 'pointer' : 'not-allowed'
                                                             }}
                                                             value={salariesSelectionnes[cellKey] || ""}
-                                                            onChange={(e) => handleSalarieChange(dayIndex, lieuIndex, creneau, e.target.value)}
+                                                            onChange={(e) => handleSalarieChange(dayIndex, lieuIndex, creneau, 0, e.target.value)}
                                                         >
                                                             <option value="">Choisir salarié</option>
                                                             {salaries.map((s) => (
