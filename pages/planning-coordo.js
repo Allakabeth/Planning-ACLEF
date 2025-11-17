@@ -2938,7 +2938,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                 color: '#374151',
                                                                 cursor: canEdit ? 'pointer' : 'not-allowed'
                                                             }}
-                                                            value={salariesSelectionnes[cellKey] || ""}
+                                                            value={salariesSelectionnes[cellKey]?.[0] || ""}
                                                             onChange={(e) => handleSalarieChange(dayIndex, lieuIndex, creneau, 0, e.target.value)}
                                                         >
                                                             <option value="">Choisir salarié</option>
@@ -2950,7 +2950,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                         </select>
                                                         {/* ⭐ VERSION IMPRESSION */}
                                                         <div className="print-only print-text">
-                                                            {salariesSelectionnes[cellKey] ? getNomSalarie(salariesSelectionnes[cellKey]) : 
+                                                            {salariesSelectionnes[cellKey]?.[0] ? getNomSalarie(salariesSelectionnes[cellKey][0]) :
                                                              <span className="print-text-empty">Aucun salarié</span>}
                                                         </div>
 
@@ -3440,7 +3440,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             return (
                                                                 <select
                                                                     key={index}
-                                                                    value=""
+                                                                    value={salarieId || ""}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
                                                                     onChange={(e) => {
                                                                         const parts = seanceSelectionnee.cellKey.split('-');
                                                                         const dayIndex = parseInt(parts[0]);
