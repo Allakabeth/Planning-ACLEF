@@ -2237,6 +2237,46 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
         }
     };
 
+    // FONCTION DE GÉNÉRATION D'ÉMARGEMENT HSP
+    const handleGenerateEmargement = async (seanceData) => {
+        try {
+            setMessage('📝 Génération de la feuille d\'émargement...');
+
+            // Appel à l'API pour générer le fichier Excel
+            const response = await fetch('/api/emargement/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(seanceData)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Erreur lors de la génération');
+            }
+
+            // Télécharger le fichier
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Emargement_HSP_${seanceData.jour}_${seanceData.date}_${seanceData.creneau}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            setMessage('✅ Feuille d\'émargement générée avec succès !');
+            setTimeout(() => setMessage(''), 3000);
+
+        } catch (error) {
+            console.error('Erreur génération émargement:', error);
+            setMessage(`❌ ${error.message}`);
+            setTimeout(() => setMessage(''), 5000);
+        }
+    };
+
     if (!dataLoaded) {
         return <SkeletonPlanningLoader />;
     }
@@ -3076,9 +3116,9 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                             readOnly={!canEdit}
                                                         />
 
-                                                        {/* Bouton Organisation Pédagogique */}
+                                                        {/* Boutons Organisation Pédagogique et Émargement */}
                                                         {canEdit && (
-                                                            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '8px' }}>
                                                                 <button
                                                                     onClick={() => {
                                                                         setSeanceSelectionnee({
@@ -3105,6 +3145,28 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                     title="Organiser la séance pédagogique"
                                                                 >
                                                                     📋
+                                                                </button>
+
+                                                                <button
+                                                                    onClick={() => handleGenerateEmargement({
+                                                                        date: getWeekDates(currentDate)[dayIndex],
+                                                                        jour: jours[dayIndex],
+                                                                        creneau: creneau === 'Matin' ? 'M' : 'AM',
+                                                                        lieu_id: selectedLieuId,
+                                                                        lieu_nom: lieux.find(l => l.id === selectedLieuId)?.nom || ''
+                                                                    })}
+                                                                    disabled={!selectedLieuId}
+                                                                    style={{
+                                                                        fontSize: '18px',
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: selectedLieuId ? 'pointer' : 'not-allowed',
+                                                                        opacity: selectedLieuId ? 1 : 0.3,
+                                                                        padding: '4px'
+                                                                    }}
+                                                                    title="Générer feuille d'émargement HSP"
+                                                                >
+                                                                    📝
                                                                 </button>
                                                             </div>
                                                         )}
