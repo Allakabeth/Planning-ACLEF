@@ -2237,13 +2237,13 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
         }
     };
 
-    // FONCTION DE GÉNÉRATION D'ÉMARGEMENT HSP
+    // FONCTION DE GÉNÉRATION D'ÉMARGEMENT PDF (HSP ou OPCO selon les apprenants)
     const handleGenerateEmargement = async (seanceData) => {
         try {
-            setMessage('📝 Génération de la feuille d\'émargement...');
+            setMessage('📝 Génération de la feuille d\'émargement PDF...');
 
-            // Appel à l'API pour générer le fichier Excel
-            const response = await fetch('/api/emargement/generate', {
+            // Essayer d'abord HSP
+            let response = await fetch('/api/emargement/generate-hsp-pdf', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -2251,23 +2251,43 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                 body: JSON.stringify(seanceData)
             });
 
+            let typeEmargement = 'HSP';
+
+            // Si pas d'apprenants HSP, essayer OPCO
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || 'Erreur lors de la génération');
+                if (error.error && error.error.includes('Aucun apprenant HSP')) {
+                    console.log('Pas d\'apprenants HSP, essai OPCO...');
+                    response = await fetch('/api/emargement/generate-opco-pdf', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(seanceData)
+                    });
+                    typeEmargement = 'OPCO';
+
+                    if (!response.ok) {
+                        const errorOPCO = await response.json();
+                        throw new Error(errorOPCO.error || 'Aucun apprenant trouvé pour ce créneau');
+                    }
+                } else {
+                    throw new Error(error.error || 'Erreur lors de la génération');
+                }
             }
 
-            // Télécharger le fichier
+            // Télécharger le fichier PDF
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Emargement_HSP_${seanceData.jour}_${seanceData.date}_${seanceData.creneau}.xlsx`;
+            a.download = `Emargement_${typeEmargement}_${seanceData.jour}_${seanceData.date}_${seanceData.creneau}.pdf`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            setMessage('✅ Feuille d\'émargement générée avec succès !');
+            setMessage(`✅ Feuille d'émargement ${typeEmargement} PDF générée avec succès !`);
             setTimeout(() => setMessage(''), 3000);
 
         } catch (error) {
@@ -3164,7 +3184,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                                                                         opacity: selectedLieuId ? 1 : 0.3,
                                                                         padding: '4px'
                                                                     }}
-                                                                    title="Générer feuille d'émargement HSP"
+                                                                    title="Générer feuille d'émargement (HSP ou OPCO)"
                                                                 >
                                                                     📝
                                                                 </button>
