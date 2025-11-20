@@ -422,8 +422,9 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [lieux, setLieux] = useState([]);
     const [planningTypes, setPlanningTypes] = useState([]);
-    const [absencesValidees, setAbsencesValidees] = useState([]);
-    
+    const [absencesValidees, setAbsencesValidees] = useState([]); // Absences formateurs
+    const [absencesApprenants, setAbsencesApprenants] = useState([]); // Absences apprenants
+
     // États pour les données du planning
     const [apprenantsParCase, setApprenantsParCase] = useState({});
     const [formateursParCase, setFormateursParCase] = useState({});
@@ -670,12 +671,14 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         try {
             console.log('🔄 Rechargement complet données...');
             
-            const [absencesRes, planningTypesRes] = await Promise.all([
+            const [absencesFormateursRes, absencesApprenantsRes, planningTypesRes] = await Promise.all([
                 supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé'),
+                supabase.from('absences_apprenants').select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique').eq('statut', 'actif'),
                 supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true)
             ]);
 
-            if (absencesRes.data) setAbsencesValidees(absencesRes.data);
+            if (absencesFormateursRes.data) setAbsencesValidees(absencesFormateursRes.data);
+            if (absencesApprenantsRes.data) setAbsencesApprenants(absencesApprenantsRes.data);
             if (planningTypesRes.data) setPlanningTypes(planningTypesRes.data);
             
             console.log('✅ Rechargement complet terminé');
@@ -735,13 +738,14 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [salariesRes, formateursRes, apprenantsRes, lieuxRes, planningTypesRes, absencesRes] = await Promise.all([
+                const [salariesRes, formateursRes, apprenantsRes, lieuxRes, planningTypesRes, absencesFormateursRes, absencesApprenantsRes] = await Promise.all([
                     supabase.from('users').select('id, prenom, nom, role, initiales').eq('role', 'salarié').eq('archive', false),
                     supabase.from('users').select('id, prenom, nom, role').eq('role', 'formateur').eq('archive', false),
                     supabase.from('users').select('id, prenom, nom, role').eq('role', 'apprenant').eq('archive', false),
                     supabase.from('lieux').select('id, nom, couleur, initiale').eq('archive', false),
                     supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true),
-                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé')
+                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé'),
+                    supabase.from('absences_apprenants').select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique').eq('statut', 'actif')
                 ]);
 
                 if (salariesRes.data) setSalaries(salariesRes.data);
@@ -749,7 +753,8 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                 if (apprenantsRes.data) setApprenants(apprenantsRes.data);
                 if (lieuxRes.data) setLieux(lieuxRes.data);
                 if (planningTypesRes.data) setPlanningTypes(planningTypesRes.data);
-                if (absencesRes.data) setAbsencesValidees(absencesRes.data);
+                if (absencesFormateursRes.data) setAbsencesValidees(absencesFormateursRes.data);
+                if (absencesApprenantsRes.data) setAbsencesApprenants(absencesApprenantsRes.data);
             } catch (error) {
                 console.error('Erreur lors du chargement des données:', error);
             }
@@ -1265,6 +1270,69 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             loadAssociations();
         }
     }, [showModalOrganisation, seanceSelectionnee, formateurs, salaries, apprenants]);
+    // ═══════════════════════════════════════════════════════════════
+
+    // 🆕 NETTOYAGE AUTOMATIQUE DES APPRENANTS ABSENTS
+    useEffect(() => {
+        if (!dataLoaded || !absencesApprenants || absencesApprenants.length === 0) return;
+
+        const weekDates = getWeekDates(currentDate);
+        let hasChanges = false;
+        const newApprenantsParCase = { ...apprenantsParCase };
+
+        Object.keys(apprenantsParCase).forEach(cellKey => {
+            const [dayIndex, lieuIndex, creneau] = cellKey.split('-');
+            const dateStr = weekDates[parseInt(dayIndex)];
+            const apprenantsIds = apprenantsParCase[cellKey] || [];
+
+            // Filtrer les apprenants absents
+            const apprenantsNonAbsents = apprenantsIds.filter(apprenantId => {
+                if (!apprenantId) return false;
+
+                const dateCheck = new Date(dateStr);
+                const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+
+                // Vérifier absence période
+                const absencePeriode = absencesApprenants.find(abs =>
+                    abs.type === 'absence_periode' &&
+                    abs.apprenant_id === apprenantId &&
+                    new Date(abs.date_debut) <= dateCheck &&
+                    new Date(abs.date_fin) >= dateCheck
+                );
+
+                if (absencePeriode) {
+                    console.log(`🧹 Apprenant ${apprenantId} absent (période) le ${dateStr}`);
+                    return false;
+                }
+
+                // Vérifier absence ponctuelle
+                const absencePonctuelle = absencesApprenants.find(abs =>
+                    abs.type === 'absence_ponctuelle' &&
+                    abs.apprenant_id === apprenantId &&
+                    abs.date_specifique === dateStr &&
+                    abs.creneau === creneauDB
+                );
+
+                if (absencePonctuelle) {
+                    console.log(`🧹 Apprenant ${apprenantId} absent (ponctuel) le ${dateStr} ${creneau}`);
+                    return false;
+                }
+
+                return true; // Apprenant présent
+            });
+
+            // Si la liste a changé, mettre à jour
+            if (apprenantsNonAbsents.length !== apprenantsIds.length) {
+                newApprenantsParCase[cellKey] = apprenantsNonAbsents;
+                hasChanges = true;
+                console.log(`🧹 Nettoyage apprenants absents ${cellKey}: ${apprenantsIds.length} → ${apprenantsNonAbsents.length}`);
+            }
+        });
+
+        if (hasChanges) {
+            setApprenantsParCase(newApprenantsParCase);
+        }
+    }, [dataLoaded, absencesApprenants, currentDate]);
     // ═══════════════════════════════════════════════════════════════
 
     // FONCTIONS DE SAUVEGARDE
