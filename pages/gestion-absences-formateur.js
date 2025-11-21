@@ -21,6 +21,15 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     const [distances, setDistances] = useState({}); // Distances formateur → lieux {lieu_id: distance_km}
 
+    // États pour le modal de présence exceptionnelle
+    const [showModalExceptionnel, setShowModalExceptionnel] = useState(false)
+    const [lieux, setLieux] = useState([])
+    const [dateExcept, setDateExcept] = useState('')
+    const [creneauExcept, setCreneauExcept] = useState('')
+    const [lieuExcept, setLieuExcept] = useState('')
+    const [motifExcept, setMotifExcept] = useState('')
+    const [formateursExcept, setFormateursExcept] = useState([])
+
     useEffect(() => {
         chargerFormateurs()
         // Définir la période par défaut (mois en cours)
@@ -72,6 +81,13 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             clearInterval(refreshInterval);
         };
     }, [user]);
+
+    // Charger les lieux quand le modal s'ouvre
+    useEffect(() => {
+        if (showModalExceptionnel) {
+            chargerLieux()
+        }
+    }, [showModalExceptionnel])
 
     // 🔄 Recharger les données quand la priorité change
     useEffect(() => {
@@ -178,6 +194,145 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             setIsLoading(false)
         }
     }
+
+    // ========== FONCTIONS MODAL PRÉSENCE EXCEPTIONNELLE ==========
+
+    const chargerLieux = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('lieux')
+                .select('id, nom, initiale')
+                .order('nom')
+
+            if (error) throw error
+            setLieux(data || [])
+        } catch (error) {
+            console.error('Erreur chargement lieux:', error)
+        }
+    }
+
+    const toggleFormateurExcept = (formateurId) => {
+        if (formateursExcept.includes(formateurId)) {
+            setFormateursExcept(formateursExcept.filter(id => id !== formateurId))
+        } else {
+            setFormateursExcept([...formateursExcept, formateurId])
+        }
+    }
+
+    const toggleTousFormateursExcept = () => {
+        if (formateursExcept.length === formateurs.length) {
+            setFormateursExcept([])
+        } else {
+            setFormateursExcept(formateurs.map(f => f.id))
+        }
+    }
+
+    const resetModalExceptionnel = () => {
+        setDateExcept('')
+        setCreneauExcept('')
+        setLieuExcept('')
+        setMotifExcept('')
+        setFormateursExcept([])
+    }
+
+    const enregistrerPresencesExceptionnelles = async () => {
+        // Validation
+        if (!dateExcept) {
+            setMessage('❌ Veuillez sélectionner une date')
+            setTimeout(() => setMessage(''), 3000)
+            return
+        }
+        if (!creneauExcept) {
+            setMessage('❌ Veuillez sélectionner un créneau')
+            setTimeout(() => setMessage(''), 3000)
+            return
+        }
+        if (!lieuExcept) {
+            setMessage('❌ Veuillez sélectionner un lieu')
+            setTimeout(() => setMessage(''), 3000)
+            return
+        }
+        if (!motifExcept.trim()) {
+            setMessage('❌ Veuillez saisir un motif')
+            setTimeout(() => setMessage(''), 3000)
+            return
+        }
+        if (formateursExcept.length === 0) {
+            setMessage('❌ Veuillez sélectionner au moins un formateur')
+            setTimeout(() => setMessage(''), 3000)
+            return
+        }
+
+        try {
+            setIsLoading(true)
+
+            const lieuObj = lieux.find(l => l.id === parseInt(lieuExcept))
+            const lieuInitiale = lieuObj?.initiale || 'ACLEF'
+            const lieuNom = lieuObj?.nom || 'ACLEF'
+
+            // Préparer les créneaux
+            const creneaux = []
+            if (creneauExcept === 'matin') {
+                creneaux.push('matin')
+            } else if (creneauExcept === 'apres_midi') {
+                creneaux.push('apres_midi')
+            } else if (creneauExcept === 'journee') {
+                creneaux.push('matin')
+                creneaux.push('apres_midi')
+            }
+
+            // Créer les présences
+            const presencesACreer = []
+            for (const formateurId of formateursExcept) {
+                for (const periode of creneaux) {
+                    presencesACreer.push({
+                        formateur_id: formateurId,
+                        date: dateExcept,
+                        periode: periode,
+                        lieu: lieuInitiale,
+                        present: true,
+                        lieu_prevu: lieuNom,
+                        type_intervention: motifExcept.trim(),
+                        source: 'manuel_admin'
+                    })
+                }
+            }
+
+            const { error } = await supabase
+                .from('presence_formateurs')
+                .upsert(presencesACreer, {
+                    onConflict: 'formateur_id,date,periode',
+                    ignoreDuplicates: false
+                })
+
+            if (error) throw error
+
+            const nbFormateurs = formateursExcept.length
+            const nbCreneaux = creneaux.length
+            const nbTotal = nbFormateurs * nbCreneaux
+
+            setMessage(`✅ ${nbTotal} présence(s) exceptionnelle(s) enregistrée(s)`)
+            setTimeout(() => setMessage(''), 5000)
+
+            // Fermer modal et réinitialiser
+            setShowModalExceptionnel(false)
+            resetModalExceptionnel()
+
+            // Recharger si un formateur est sélectionné
+            if (formateurSelectionne) {
+                await chargerPresences()
+            }
+
+        } catch (error) {
+            console.error('Erreur enregistrement présences:', error)
+            setMessage(`❌ Erreur: ${error.message}`)
+            setTimeout(() => setMessage(''), 5000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // ========== FIN FONCTIONS MODAL ==========
 
     const genererPresencesAutomatiques = async () => {
         if (!formateurSelectionne || !dateDebut || !dateFin) {
@@ -923,6 +1078,26 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         >
                             🤖 Générer présences auto
                         </button>
+
+                        <button
+                            onClick={() => setShowModalExceptionnel(true)}
+                            disabled={isLoading || !canEdit}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : 'Enregistrer une présence exceptionnelle (AG, formation formateurs, etc.)'}
+                            style={{
+                                backgroundColor: !canEdit ? '#94a3b8' : '#8b5cf6',
+                                color: 'white',
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                opacity: !canEdit ? 0.6 : 1,
+                                marginLeft: '10px'
+                            }}
+                        >
+                            ⭐ Présence Exceptionnelle
+                        </button>
                     </div>
                 </div>
 
@@ -1465,6 +1640,269 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         }}>
                             Ce formateur n'avait aucune intervention prévue sur la période sélectionnée.
                         </p>
+                    </div>
+                )}
+
+                {/* Modal Présence Exceptionnelle */}
+                {showModalExceptionnel && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '20px'
+                    }}>
+                        <div style={{
+                            backgroundColor: 'white',
+                            borderRadius: '12px',
+                            padding: '30px',
+                            maxWidth: '600px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflowY: 'auto',
+                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+                        }}>
+                            <h2 style={{
+                                fontSize: '24px',
+                                fontWeight: 'bold',
+                                color: '#1f2937',
+                                marginBottom: '20px'
+                            }}>
+                                ⭐ Présence Exceptionnelle
+                            </h2>
+
+                            <p style={{
+                                color: '#6b7280',
+                                marginBottom: '20px'
+                            }}>
+                                Enregistrer une présence exceptionnelle (AG, formation formateurs, réunion pédagogique, etc.)
+                            </p>
+
+                            {/* Date */}
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '5px',
+                                    fontWeight: 'bold',
+                                    color: '#374151'
+                                }}>
+                                    Date *
+                                </label>
+                                <input
+                                    type="date"
+                                    value={dateExcept}
+                                    onChange={(e) => setDateExcept(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Créneau */}
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '5px',
+                                    fontWeight: 'bold',
+                                    color: '#374151'
+                                }}>
+                                    Créneau *
+                                </label>
+                                <select
+                                    value={creneauExcept}
+                                    onChange={(e) => setCreneauExcept(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    <option value="">Sélectionner un créneau</option>
+                                    <option value="matin">Matin</option>
+                                    <option value="apres_midi">Après-midi</option>
+                                    <option value="journee">Journée complète</option>
+                                </select>
+                            </div>
+
+                            {/* Lieu */}
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '5px',
+                                    fontWeight: 'bold',
+                                    color: '#374151'
+                                }}>
+                                    Lieu *
+                                </label>
+                                <select
+                                    value={lieuExcept}
+                                    onChange={(e) => setLieuExcept(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    <option value="">Sélectionner un lieu</option>
+                                    {lieux.map(lieu => (
+                                        <option key={lieu.id} value={lieu.id}>
+                                            {lieu.nom}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Motif */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '5px',
+                                    fontWeight: 'bold',
+                                    color: '#374151'
+                                }}>
+                                    Motif *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={motifExcept}
+                                    onChange={(e) => setMotifExcept(e.target.value)}
+                                    placeholder="Ex: AG, Formation formateurs, Réunion pédagogique..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Formateurs */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '10px'
+                                }}>
+                                    <label style={{
+                                        fontWeight: 'bold',
+                                        color: '#374151'
+                                    }}>
+                                        Formateurs * ({formateursExcept.length} sélectionné{formateursExcept.length > 1 ? 's' : ''})
+                                    </label>
+                                    <button
+                                        onClick={toggleTousFormateursExcept}
+                                        style={{
+                                            backgroundColor: '#f3f4f6',
+                                            color: '#374151',
+                                            padding: '6px 12px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #d1d5db',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
+                                        {formateursExcept.length === formateurs.length ? 'Tout décocher' : 'Tout cocher'}
+                                    </button>
+                                </div>
+                                <div style={{
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '8px',
+                                    padding: '10px'
+                                }}>
+                                    {formateurs.map(formateur => (
+                                        <label
+                                            key={formateur.id}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                padding: '8px',
+                                                cursor: 'pointer',
+                                                borderRadius: '6px',
+                                                marginBottom: '4px',
+                                                backgroundColor: formateursExcept.includes(formateur.id) ? '#f0f9ff' : 'transparent'
+                                            }}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={formateursExcept.includes(formateur.id)}
+                                                onChange={() => toggleFormateurExcept(formateur.id)}
+                                                style={{
+                                                    marginRight: '10px',
+                                                    cursor: 'pointer',
+                                                    width: '16px',
+                                                    height: '16px'
+                                                }}
+                                            />
+                                            <span style={{ fontSize: '14px', color: '#374151' }}>
+                                                {formateur.nom} {formateur.prenom}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Boutons */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '10px',
+                                justifyContent: 'flex-end',
+                                marginTop: '25px'
+                            }}>
+                                <button
+                                    onClick={() => {
+                                        setShowModalExceptionnel(false)
+                                        resetModalExceptionnel()
+                                    }}
+                                    style={{
+                                        backgroundColor: '#f3f4f6',
+                                        color: '#374151',
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #d1d5db',
+                                        cursor: 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    onClick={enregistrerPresencesExceptionnelles}
+                                    disabled={isLoading}
+                                    style={{
+                                        backgroundColor: isLoading ? '#9ca3af' : '#8b5cf6',
+                                        color: 'white',
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        cursor: isLoading ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    {isLoading ? 'Enregistrement...' : 'Enregistrer'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
