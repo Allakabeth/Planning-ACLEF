@@ -179,12 +179,55 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         }
     }
 
+    const genererPresencesAutomatiques = async () => {
+        if (!formateurSelectionne || !dateDebut || !dateFin) {
+            setMessage('❌ Veuillez sélectionner un formateur et une période')
+            setTimeout(() => setMessage(''), 4000)
+            return
+        }
+
+        try {
+            setIsLoading(true)
+            const response = await fetch('/api/admin/presences-formateurs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    formateur_id: formateurSelectionne,
+                    date_debut: dateDebut,
+                    date_fin: dateFin
+                })
+            })
+
+            const result = await response.json()
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Erreur lors de la génération')
+            }
+
+            setMessage(`✅ ${result.presences_creees} présence(s) générée(s) automatiquement`)
+            setTimeout(() => setMessage(''), 6000)
+
+            // Recharger les présences pour afficher les nouvelles données
+            await chargerPresences()
+
+        } catch (error) {
+            console.error('Erreur génération automatique:', error)
+            setMessage(`❌ ${error.message}`)
+            setTimeout(() => setMessage(''), 6000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const calculerStats = (interventionsData, distancesMap = null) => {
         let totalInterventions = 0
         let presentsInterventions = 0
         let bureauInterventions = 0
         let nonDeclareInterventions = 0
-        let totalKmAllerRetour = 0
+        let totalKmFormation = 0  // Nouveau : km Formation uniquement
+        let totalKmBureau = 0      // Nouveau : km Bureau uniquement
 
         const lieuxStats = {}
         const distancesAUtiliser = distancesMap || distances
@@ -214,7 +257,8 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                 if (!presencesParDate[dateKey]) {
                     presencesParDate[dateKey] = {
                         lieu: lieuDeclare,
-                        creneaux: []
+                        creneaux: [],
+                        source: intervention.source  // Stocker la source (formation vs bureau)
                     }
                 }
                 presencesParDate[dateKey].creneaux.push(intervention.creneau)
@@ -226,16 +270,32 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
         // Calculer les km (1 déplacement par date) et enrichir presencesParDate
         Object.entries(presencesParDate).forEach(([date, info]) => {
             const distance = distancesAUtiliser[info.lieu]
-            console.log(`🔍 [DEBUG] ${date} - Lieu: ${info.lieu}, Créneaux: ${info.creneaux.join(', ')}, Distance: ${distance} km`)
+            const estBureau = info.source === 'presence_bureau'
+            const typePresence = estBureau ? 'Bureau' : 'Formation'
+
+            console.log(`🔍 [DEBUG] ${date} - Lieu: ${info.lieu}, Créneaux: ${info.creneaux.join(', ')}, Type: ${typePresence}, Distance: ${distance} km`)
+
             if (distance && !isNaN(distance)) {
                 const kmAR = parseFloat(distance) // Déjà en aller-retour
-                totalKmAllerRetour += kmAR
-                presencesParDate[date].km = kmAR // Ajouter le km à chaque date
-                console.log(`✅ [DEBUG] Ajout ${kmAR} km`)
+
+                // Accumuler dans la bonne catégorie
+                if (estBureau) {
+                    totalKmBureau += kmAR
+                    presencesParDate[date].kmBureau = kmAR
+                    console.log(`🏢 [DEBUG] Ajout ${kmAR} km BUREAU`)
+                } else {
+                    totalKmFormation += kmAR
+                    presencesParDate[date].kmFormation = kmAR
+                    console.log(`📚 [DEBUG] Ajout ${kmAR} km FORMATION`)
+                }
+
+                // Garder aussi le total pour rétrocompatibilité
+                presencesParDate[date].km = kmAR
             }
         })
 
-        console.log(`📊 [DEBUG] Total km aller-retour: ${totalKmAllerRetour}`)
+        const totalKmAllerRetour = totalKmFormation + totalKmBureau
+        console.log(`📊 [DEBUG] Total km Formation: ${totalKmFormation} | Bureau: ${totalKmBureau} | Total: ${totalKmAllerRetour}`)
 
         const tauxPresence = totalInterventions > 0 ? Math.round((presentsInterventions / totalInterventions) * 100) : 0
 
@@ -246,7 +306,9 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
             nonDeclareInterventions,
             tauxPresence,
             lieuxStats,
-            totalKmAllerRetour,
+            totalKmAllerRetour,      // Total
+            totalKmFormation,        // Nouveau : km Formation
+            totalKmBureau,           // Nouveau : km Bureau
             presencesParDate // Pour afficher les km par ligne (objet indexé par date)
         })
     }
@@ -339,7 +401,10 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                             date: intervention.date,
                             periode: periode,
                             lieu: lieuParDefaut,
-                            present: estPresent
+                            present: estPresent,
+                            lieu_prevu: intervention.lieu_prevu || lieuParDefaut,
+                            type_intervention: intervention.statut_prevu || 'manuel_admin',
+                            source: 'manuel_admin'
                         }])
 
                     if (insertError) throw insertError
@@ -381,9 +446,13 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                    intervention.statut_prevu === 'dispo_except' ? 'Dispo exceptionnelle' :
                                    intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' :
                                    intervention.statut_prevu === 'bureau' ? 'Bureau' : intervention.statut_prevu,
-                'Présence déclarée': intervention.statut_final === 'present' ? 'Présent' :
-                                   intervention.statut_final === 'absent' ? 'Absent' : 'Non déclaré',
-                'Lieu déclaré': intervention.lieu_declare || '-',
+                'Source': intervention.source === 'planning_coordo' ? 'Coordo' :
+                         intervention.source === 'planning_type' ? 'Planning type' :
+                         intervention.source === 'bureau' ? 'Bureau' :
+                         intervention.source === 'manuel_admin' ? 'Admin' :
+                         intervention.source === 'existant' ? 'Historique' : intervention.source || '-',
+                'Statut': intervention.statut_final === 'present' ? 'Présent' : 'Absent',
+                'Lieu': intervention.lieu_declare || '-',
                 'Date déclaration': intervention.date_declaration ?
                     new Date(intervention.date_declaration).toLocaleDateString('fr-FR') : '-'
             }))
@@ -472,7 +541,15 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         <p>• Présent : ${stats.presentsInterventions || 0}</p>
                         ${formateurInfo.bureau ? `<p>• Bureau : ${stats.bureauInterventions || 0}</p>` : ''}
                         <p>• Non déclaré : ${stats.nonDeclareInterventions || 0}</p>
-                        ${stats.totalKmAllerRetour > 0 ? `<p><strong>• Total km aller-retour : ${Math.round(stats.totalKmAllerRetour)} km</strong></p>` : ''}
+                        ${stats.totalKmAllerRetour > 0 ? `
+                            <p><strong>• Total km aller-retour : ${Math.round(stats.totalKmAllerRetour)} km</strong></p>
+                            ${stats.totalKmFormation > 0 || stats.totalKmBureau > 0 ? `
+                                <p style="margin-left: 20px; font-size: 12px;">
+                                    ${stats.totalKmFormation > 0 ? `📚 Formation: ${Math.round(stats.totalKmFormation)} km<br>` : ''}
+                                    ${stats.totalKmBureau > 0 ? `🏢 Bureau: ${Math.round(stats.totalKmBureau)} km` : ''}
+                                </p>
+                            ` : ''}
+                        ` : ''}
                     </div>
 
                     <table>
@@ -482,8 +559,9 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                 <th>Créneau</th>
                                 <th>Lieu prévu</th>
                                 <th>Type intervention</th>
-                                <th>Présence déclarée</th>
-                                <th>Lieu déclaré</th>
+                                <th>Source</th>
+                                <th>Statut</th>
+                                <th>Lieu</th>
                                 <th>Date déclaration</th>
                             </tr>
                         </thead>
@@ -497,9 +575,13 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                          intervention.statut_prevu === 'dispo_except' ? 'Dispo except.' :
                                          intervention.statut_prevu === 'disponible_non_choisi' ? 'Disponible' :
                                          intervention.statut_prevu === 'bureau' ? 'Bureau' : intervention.statut_prevu}</td>
+                                    <td>${intervention.source === 'planning_coordo' ? 'Coordo' :
+                                         intervention.source === 'planning_type' ? 'Planning type' :
+                                         intervention.source === 'bureau' ? 'Bureau' :
+                                         intervention.source === 'manuel_admin' ? 'Admin' :
+                                         intervention.source === 'existant' ? 'Historique' : intervention.source || '-'}</td>
                                     <td class="${intervention.statut_final}">
-                                        ${intervention.statut_final === 'present' ? '✓ Présent' :
-                                          intervention.statut_final === 'absent' ? '✗ Absent' : '⚠ Non déclaré'}
+                                        ${intervention.statut_final === 'present' ? '✓ Présent' : '✗ Absent'}
                                     </td>
                                     <td>${intervention.lieu_declare || '-'}</td>
                                     <td>${intervention.date_declaration ? new Date(intervention.date_declaration).toLocaleDateString('fr-FR') : '-'}</td>
@@ -812,6 +894,35 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                         >
                             {isLoading ? 'Chargement...' : 'Charger'}
                         </button>
+
+                        <button
+                            onClick={genererPresencesAutomatiques}
+                            disabled={
+                                !formateurSelectionne ||
+                                !dateDebut ||
+                                !dateFin ||
+                                isLoading ||
+                                !canEdit
+                            }
+                            title={
+                                !canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' :
+                                'Générer automatiquement les présences basées sur le planning (Formation pour bureau, tout pour les autres)'
+                            }
+                            style={{
+                                backgroundColor: !canEdit ? '#94a3b8' : (formateurSelectionne && dateDebut && dateFin ? '#10b981' : '#9ca3af'),
+                                color: 'white',
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                cursor: !canEdit ? 'not-allowed' : (formateurSelectionne && dateDebut && dateFin ? 'pointer' : 'not-allowed'),
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                opacity: !canEdit ? 0.6 : 1,
+                                marginLeft: '10px'
+                            }}
+                        >
+                            🤖 Générer présences auto
+                        </button>
                     </div>
                 </div>
 
@@ -906,12 +1017,22 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                     borderRadius: '8px',
                                     textAlign: 'center'
                                 }}>
-                                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af' }}>
+                                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e40af', marginBottom: '8px' }}>
                                         {Math.round(stats.totalKmAllerRetour)} km
                                     </div>
-                                    <div style={{ fontSize: '14px', color: '#1e40af' }}>
+                                    <div style={{ fontSize: '14px', color: '#1e40af', marginBottom: '8px' }}>
                                         Aller-retour cumulés
                                     </div>
+                                    {(stats.totalKmFormation > 0 || stats.totalKmBureau > 0) && (
+                                        <div style={{ fontSize: '12px', color: '#3b82f6', marginTop: '8px', borderTop: '1px solid #93c5fd', paddingTop: '8px' }}>
+                                            {stats.totalKmFormation > 0 && (
+                                                <div>📚 Formation: {Math.round(stats.totalKmFormation)} km</div>
+                                            )}
+                                            {stats.totalKmBureau > 0 && (
+                                                <div>🏢 Bureau: {Math.round(stats.totalKmBureau)} km</div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1073,11 +1194,19 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                         </th>
                                         <th style={{
                                             padding: '12px',
+                                            textAlign: 'left',
+                                            borderBottom: '1px solid #e5e7eb',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            Source
+                                        </th>
+                                        <th style={{
+                                            padding: '12px',
                                             textAlign: 'center',
                                             borderBottom: '1px solid #e5e7eb',
                                             fontWeight: 'bold'
                                         }}>
-                                            Présence déclarée
+                                            Statut
                                         </th>
                                         <th style={{
                                             padding: '12px',
@@ -1085,7 +1214,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                             borderBottom: '1px solid #e5e7eb',
                                             fontWeight: 'bold'
                                         }}>
-                                            Lieu déclaré
+                                            Lieu
                                         </th>
                                         <th style={{
                                             padding: '12px',
@@ -1158,6 +1287,36 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                             </td>
                                             <td style={{
                                                 padding: '12px',
+                                                borderBottom: '1px solid #e5e7eb'
+                                            }}>
+                                                <span style={{
+                                                    padding: '2px 6px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '10px',
+                                                    fontWeight: 'bold',
+                                                    backgroundColor:
+                                                        intervention.source === 'planning_coordo' ? '#dbeafe' :
+                                                        intervention.source === 'planning_type' ? '#fef3c7' :
+                                                        intervention.source === 'bureau' ? '#f3e8ff' :
+                                                        intervention.source === 'manuel_admin' ? '#fee2e2' :
+                                                        intervention.source === 'existant' ? '#e5e7eb' : '#f3f4f6',
+                                                    color:
+                                                        intervention.source === 'planning_coordo' ? '#1e40af' :
+                                                        intervention.source === 'planning_type' ? '#92400e' :
+                                                        intervention.source === 'bureau' ? '#7c3aed' :
+                                                        intervention.source === 'manuel_admin' ? '#991b1b' :
+                                                        intervention.source === 'existant' ? '#6b7280' : '#6b7280'
+                                                }}>
+                                                    {intervention.source === 'planning_coordo' ? '📅 Coordo' :
+                                                     intervention.source === 'planning_type' ? '🔄 Planning type' :
+                                                     intervention.source === 'bureau' ? '🏢 Bureau' :
+                                                     intervention.source === 'manuel_admin' ? '✏️ Admin' :
+                                                     intervention.source === 'existant' ? '📦 Historique' :
+                                                     intervention.source || '-'}
+                                                </span>
+                                            </td>
+                                            <td style={{
+                                                padding: '12px',
                                                 borderBottom: '1px solid #e5e7eb',
                                                 textAlign: 'center'
                                             }}>
@@ -1169,14 +1328,11 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                         fontSize: '12px',
                                                         fontWeight: 'bold',
                                                         backgroundColor:
-                                                            intervention.statut_final === 'present' ? '#dcfce7' :
-                                                            intervention.statut_final === 'absent' ? '#fef2f2' : '#fef3c7',
+                                                            intervention.statut_final === 'present' ? '#dcfce7' : '#fef2f2',
                                                         color:
-                                                            intervention.statut_final === 'present' ? '#166534' :
-                                                            intervention.statut_final === 'absent' ? '#991b1b' : '#92400e'
+                                                            intervention.statut_final === 'present' ? '#166534' : '#991b1b'
                                                     }}>
-                                                        {intervention.statut_final === 'present' ? '✓ Présent' :
-                                                         intervention.statut_final === 'absent' ? '✗ Absent' : '⚠ Non déclaré'}
+                                                        {intervention.statut_final === 'present' ? '✓ Présent' : '✗ Absent'}
                                                     </span>
 
                                                     {/* Boutons icônes pour changer le statut */}
@@ -1228,32 +1384,6 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                                                         >
                                                             ✗
                                                         </button>
-
-                                                        {/* Bouton Annuler (remettre en non déclaré) - uniquement si déjà déclaré */}
-                                                        {intervention.statut_final !== 'non_declare' && (
-                                                            <button
-                                                                onClick={() => declarerPresenceAdmin(intervention, null)}
-                                                                disabled={!canEdit}
-                                                                title={!canEdit ? 'Mode consultation' : 'Annuler et remettre en non déclaré'}
-                                                                style={{
-                                                                    width: '24px',
-                                                                    height: '24px',
-                                                                    borderRadius: '6px',
-                                                                    backgroundColor: !canEdit ? '#e5e7eb' : '#fef3c7',
-                                                                    color: !canEdit ? '#9ca3af' : '#92400e',
-                                                                    border: '1px solid #fbbf24',
-                                                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    fontSize: '14px',
-                                                                    fontWeight: 'bold',
-                                                                    padding: 0
-                                                                }}
-                                                            >
-                                                                ⚠
-                                                            </button>
-                                                        )}
                                                     </div>
                                                 </div>
                                             </td>

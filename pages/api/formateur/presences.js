@@ -91,7 +91,10 @@ async function handlePost(req, res) {
                 date,
                 periode,
                 lieu,
-                present: present !== undefined ? present : true
+                present: present !== undefined ? present : true,
+                lieu_prevu: lieu,
+                type_intervention: 'bureau',
+                source: 'bureau'
             }])
             .select()
 

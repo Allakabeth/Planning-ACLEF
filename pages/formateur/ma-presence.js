@@ -473,6 +473,25 @@ export default function MaPresence() {
         return 'white' // Toujours blanc sur fond coloré
     }
 
+    // Vérifier si un créneau correspond à une affectation planning (formation)
+    const estJourFormation = (creneau) => {
+        if (!user || user.bureau !== true) return false // Seulement pour membres bureau
+
+        const dateAujourdhui = aujourdhui.toISOString().split('T')[0]
+        const jourCapitalized = aujourdhui.toLocaleDateString('fr-FR', { weekday: 'long' }).charAt(0).toUpperCase() +
+                                aujourdhui.toLocaleDateString('fr-FR', { weekday: 'long' }).slice(1)
+        const creneauDB = creneau === 'Matin' ? 'matin' : 'AM'
+
+        // Vérifier si le formateur a une affectation planning coordo pour ce créneau
+        const affectation = planningCoordo.find(pc => {
+            return pc.date === dateAujourdhui &&
+                   pc.jour === jourCapitalized &&
+                   pc.creneau === creneauDB
+        })
+
+        return !!affectation
+    }
+
     if (isLoading || authLoading) {
         return (
             <div style={{
@@ -562,6 +581,97 @@ export default function MaPresence() {
                         🟢 Cliquez pour marquer votre présence
                     </p>
                 </div>
+
+                {/* Message informatif pour formateurs non-bureau */}
+                {user && user.bureau !== true && (
+                    <div style={{
+                        backgroundColor: '#dbeafe',
+                        border: '2px solid #3b82f6',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '20px',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{
+                            fontSize: '24px',
+                            marginBottom: '8px'
+                        }}>ℹ️</div>
+                        <p style={{
+                            fontSize: '14px',
+                            color: '#1e40af',
+                            margin: '0 0 8px 0',
+                            fontWeight: '600'
+                        }}>
+                            Présences automatiques
+                        </p>
+                        <p style={{
+                            fontSize: '12px',
+                            color: '#1e3a8a',
+                            margin: '0 0 12px 0',
+                            lineHeight: '1.5'
+                        }}>
+                            Vos présences sont générées automatiquement par l'administration en fonction de votre planning et de vos absences déclarées.
+                        </p>
+                        <p style={{
+                            fontSize: '12px',
+                            color: '#1e3a8a',
+                            margin: '0',
+                            fontWeight: '600'
+                        }}>
+                            Vous n'avez pas besoin de pointer.
+                        </p>
+                        <p style={{
+                            fontSize: '11px',
+                            color: '#3b82f6',
+                            margin: '8px 0 0 0',
+                            fontStyle: 'italic'
+                        }}>
+                            Pour toute correction, contactez la coordination.
+                        </p>
+                    </div>
+                )}
+
+                {/* Message informatif pour membres du bureau */}
+                {user && user.bureau === true && (
+                    <div style={{
+                        backgroundColor: '#fef3c7',
+                        border: '2px solid #f59e0b',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '20px',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{
+                            fontSize: '24px',
+                            marginBottom: '8px'
+                        }}>ℹ️</div>
+                        <p style={{
+                            fontSize: '14px',
+                            color: '#92400e',
+                            margin: '0 0 8px 0',
+                            fontWeight: '600'
+                        }}>
+                            Information importante
+                        </p>
+                        <p style={{
+                            fontSize: '12px',
+                            color: '#78350f',
+                            margin: '0 0 12px 0',
+                            lineHeight: '1.5'
+                        }}>
+                            Ce pointage concerne <strong>uniquement vos présences au bureau</strong>.
+                            Vos présences en formation sont automatiquement enregistrées par le système selon votre planning.
+                        </p>
+                        <p style={{
+                            fontSize: '12px',
+                            color: '#78350f',
+                            margin: '0',
+                            fontWeight: '600'
+                        }}>
+                            Il n'est pas nécessaire de pointer lors de vos jours de formation.
+                        </p>
+                    </div>
+                )}
 
                 {/* Messages */}
                 {message && (
@@ -706,8 +816,11 @@ export default function MaPresence() {
                     </>
                 )}
 
-                {/* Légende */}
-                <div style={{
+                {/* Interface de pointage - Uniquement pour membres du bureau */}
+                {user && user.bureau === true && (
+                    <>
+                        {/* Légende */}
+                        <div style={{
                     backgroundColor: '#f8fafc',
                     padding: '16px',
                     borderRadius: '12px',
@@ -759,20 +872,28 @@ export default function MaPresence() {
                 }}>
                     {creneaux.map(creneau => {
                         const statut = getCreneauStatut(creneau)
+                        const estFormation = estJourFormation(creneau)
 
                         return (
                             <div
                                 key={creneau}
-                                onClick={() => togglePresenceLocale(creneau)}
+                                onClick={() => {
+                                    if (estFormation) {
+                                        setMessage('ℹ️ Vous n\'avez pas besoin de pointer aujourd\'hui. Le système vous a déjà enregistré en formation pour ce créneau.')
+                                        setTimeout(() => setMessage(''), 4000)
+                                    } else {
+                                        togglePresenceLocale(creneau)
+                                    }
+                                }}
                                 style={{
                                     flex: 1,
                                     padding: '16px',
-                                    backgroundColor: getCreneauColor(creneau),
+                                    backgroundColor: estFormation ? '#9ca3af' : getCreneauColor(creneau),
                                     color: getTextColor(creneau),
                                     borderRadius: '12px',
-                                    cursor: 'pointer',
+                                    cursor: estFormation ? 'not-allowed' : 'pointer',
                                     transition: 'all 0.2s ease',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    boxShadow: estFormation ? 'none' : '0 4px 12px rgba(0,0,0,0.15)',
                                     textAlign: 'center',
                                     minHeight: '60px',
                                     display: 'flex',
@@ -780,7 +901,8 @@ export default function MaPresence() {
                                     justifyContent: 'center',
                                     alignItems: 'center',
                                     transform: 'scale(1)',
-                                    border: 'none'
+                                    border: estFormation ? '2px dashed #6b7280' : 'none',
+                                    opacity: estFormation ? 0.7 : 1
                                 }}
                                 onMouseDown={(e) => e.target.style.transform = 'scale(0.95)'}
                                 onMouseUp={(e) => e.target.style.transform = 'scale(1)'}
@@ -1036,8 +1158,10 @@ export default function MaPresence() {
                         </div>
                     </div>
                 )}
+                    </>
+                )}
 
-                {/* Bouton retour */}
+                {/* Bouton retour - Visible pour tous */}
                 <button
                     onClick={() => router.push('/formateur')}
                     style={{
