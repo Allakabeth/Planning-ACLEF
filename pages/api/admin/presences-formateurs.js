@@ -268,13 +268,17 @@ async function handleGet(req, res) {
             return 0
         })
 
-        console.log(`✅ ${resultats.length} interventions prévues trouvées`)
+        // Filtrer pour ne garder que les jours <= aujourd'hui (pas de "présences" futures)
+        const aujourdhuiStr = new Date().toISOString().split('T')[0]
+        const resultatsFiltre = resultats.filter(intervention => intervention.date <= aujourdhuiStr)
+
+        console.log(`✅ ${resultats.length} interventions prévues trouvées (${resultatsFiltre.length} après filtrage jours futurs)`)
 
         if (format === 'export') {
-            return res.status(200).json(formatForExport(resultats))
+            return res.status(200).json(formatForExport(resultatsFiltre))
         }
 
-        return res.status(200).json(resultats)
+        return res.status(200).json(resultatsFiltre)
 
     } catch (error) {
         console.error('Erreur API presences-formateurs:', error)
@@ -332,9 +336,13 @@ async function handleGetSemainePassee(req, res, formateur_id, date_debut, date_f
             }
         })
 
-        console.log(`✅ ${resultats.length} présences (historique figé) trouvées`)
+        // Filtrer pour ne garder que les jours <= aujourd'hui (sécurité supplémentaire)
+        const aujourdhuiStr = new Date().toISOString().split('T')[0]
+        const resultatsFiltre = resultats.filter(presence => presence.date <= aujourdhuiStr)
 
-        return res.status(200).json(resultats)
+        console.log(`✅ ${resultats.length} présences (historique figé) trouvées (${resultatsFiltre.length} après filtrage)`)
+
+        return res.status(200).json(resultatsFiltre)
 
     } catch (error) {
         console.error('Erreur API presences-formateurs (semaine passée):', error)
