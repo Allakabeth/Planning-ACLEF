@@ -67,10 +67,10 @@ async function createEmargementHSPPDF(data) {
 
       // Espacements calculés manuellement pour chaque logo
       const logosConfig = [
-        { path: path.join(projectRoot, 'logo-1.png'), x: 30 },
-        { path: path.join(projectRoot, 'logo-2.png'), x: 120 },
-        { path: path.join(projectRoot, 'logo-3.png'), x: 240 },
-        { path: path.join(projectRoot, 'logo-4.jpeg'), x: 320 }
+        { path: path.join(projectRoot, 'public', 'logo-1.png'), x: 30 },
+        { path: path.join(projectRoot, 'public', 'logo-2.png'), x: 120 },
+        { path: path.join(projectRoot, 'public', 'logo-3.png'), x: 240 },
+        { path: path.join(projectRoot, 'public', 'logo-4.jpeg'), x: 320 }
       ];
 
       logosConfig.forEach(logo => {

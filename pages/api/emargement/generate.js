@@ -700,7 +700,7 @@ async function createEmargementWorkbook(data) {
 
     // Logo 1 : Nouvelle-Aquitaine (colonne A)
     // Positions natives extraites du modèle
-    const logo1Path = path.join(projectRoot, 'logo-1.png');
+    const logo1Path = path.join(projectRoot, 'public', 'logo-1.png');
     if (fs.existsSync(logo1Path)) {
       const logo1Id = workbook.addImage({
         buffer: fs.readFileSync(logo1Path),
@@ -714,7 +714,7 @@ async function createEmargementWorkbook(data) {
     }
 
     // Logo 2 : ACLEF Châtellerault
-    const logo2Path = path.join(projectRoot, 'logo-2.png');
+    const logo2Path = path.join(projectRoot, 'public', 'logo-2.png');
     if (fs.existsSync(logo2Path)) {
       const logo2Id = workbook.addImage({
         buffer: fs.readFileSync(logo2Path),
@@ -728,7 +728,7 @@ async function createEmargementWorkbook(data) {
     }
 
     // Logo 3 : ACLEF Formation en Compétences Clés
-    const logo3Path = path.join(projectRoot, 'logo-3.png');
+    const logo3Path = path.join(projectRoot, 'public', 'logo-3.png');
     if (fs.existsSync(logo3Path)) {
       const logo3Id = workbook.addImage({
         buffer: fs.readFileSync(logo3Path),
@@ -742,7 +742,7 @@ async function createEmargementWorkbook(data) {
     }
 
     // Logo 4 : Investir dans vos compétences
-    const logo4Path = path.join(projectRoot, 'logo-4.jpeg');
+    const logo4Path = path.join(projectRoot, 'public', 'logo-4.jpeg');
     if (fs.existsSync(logo4Path)) {
       const logo4Id = workbook.addImage({
         buffer: fs.readFileSync(logo4Path),

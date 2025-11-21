@@ -66,10 +66,10 @@ async function createEmargementOPCOPDF(data) {
       // Ordre exact du modèle : ACLEF Châtellerault, ACLEF Formation, CORAPLIS, Label Académique
       // Positions x réparties équitablement sur la largeur (595pt)
       const logosConfig = [
-        { path: path.join(projectRoot, 'a.png'), x: 25 },    // ACLEF Châtellerault
-        { path: path.join(projectRoot, 'b.png'), x: 110 },   // ACLEF Formation (texte long)
-        { path: path.join(projectRoot, 'c.png'), x: 320 },   // CORAPLIS
-        { path: path.join(projectRoot, 'f.png'), x: 430 }    // Label Académique (Nouvelle-Aquitaine)
+        { path: path.join(projectRoot, 'public', 'a.png'), x: 25 },    // ACLEF Châtellerault
+        { path: path.join(projectRoot, 'public', 'b.png'), x: 110 },   // ACLEF Formation (texte long)
+        { path: path.join(projectRoot, 'public', 'c.png'), x: 320 },   // CORAPLIS
+        { path: path.join(projectRoot, 'public', 'f.png'), x: 430 }    // Label Académique (Nouvelle-Aquitaine)
       ];
 
       logosConfig.forEach(logo => {
@@ -171,7 +171,7 @@ async function createEmargementOPCOPDF(data) {
       // ========================================
       // LOGOS DU BAS (d.jpg - 6 logos en bas de page)
       // ========================================
-      const logoDPath = path.join(projectRoot, 'd.jpg');
+      const logoDPath = path.join(projectRoot, 'public', 'd.jpg');
       if (fs.existsSync(logoDPath)) {
         // Positionner en bas de page (hauteur A4 portrait = 842 points)
         const bottomY = pageHeight - 100; // 100 points du bas
