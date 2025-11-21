@@ -400,7 +400,7 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
                             formateur_id: formateurSelectionne,
                             date: intervention.date,
                             periode: periode,
-                            lieu: lieuParDefaut,
+                            lieu: intervention.lieu_prevu || lieuParDefaut,
                             present: estPresent,
                             lieu_prevu: intervention.lieu_prevu || lieuParDefaut,
                             type_intervention: intervention.statut_prevu || 'manuel_admin',
