@@ -482,10 +482,14 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
           !m.archive
         )
       case 'validation_modif_traitees':
-        return messagesFiltres.filter(m => 
-          m.objet === 'Validation de modification ponctuelle' && 
+        return messagesFiltres.filter(m =>
+          m.objet === 'Validation de modification ponctuelle' &&
           m.statut_validation === 'traite'
         )
+      case 'fin_formation':
+        return messagesFiltres.filter(m => m.type === 'fin_formation' && !m.archive)
+      case 'fin_formation_archives':
+        return messagesFiltres.filter(m => m.type === 'fin_formation' && m.archive)
       case 'archives':
         return messagesFiltres.filter(m => m.archive)
       case 'tous':
@@ -499,34 +503,67 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
     return {
       non_lus: messages.filter(m => !m.lu && !m.archive).length,
       lus: messages.filter(m => m.lu && !m.archive).length,
-      validation_planning_a_traiter: messages.filter(m => 
-        m.objet === 'Validation de planning type' && 
-        m.statut_validation === 'a_traiter' && 
+      validation_planning_a_traiter: messages.filter(m =>
+        m.objet === 'Validation de planning type' &&
+        m.statut_validation === 'a_traiter' &&
         !m.archive
       ).length,
-      validation_planning_traitees: messages.filter(m => 
-        m.objet === 'Validation de planning type' && 
+      validation_planning_traitees: messages.filter(m =>
+        m.objet === 'Validation de planning type' &&
         m.statut_validation === 'traite'
       ).length,
-      validation_modif_a_traiter: messages.filter(m => 
-        m.objet === 'Validation de modification ponctuelle' && 
-        m.statut_validation === 'a_traiter' && 
+      validation_modif_a_traiter: messages.filter(m =>
+        m.objet === 'Validation de modification ponctuelle' &&
+        m.statut_validation === 'a_traiter' &&
         !m.archive
       ).length,
-      validation_modif_traitees: messages.filter(m => 
-        m.objet === 'Validation de modification ponctuelle' && 
+      validation_modif_traitees: messages.filter(m =>
+        m.objet === 'Validation de modification ponctuelle' &&
         m.statut_validation === 'traite'
       ).length,
+      // ✅ NOUVEAU: Compteurs fin de formation
+      fin_formation: messages.filter(m => m.type === 'fin_formation' && !m.archive).length,
+      fin_formation_archives: messages.filter(m => m.type === 'fin_formation' && m.archive).length,
       archives: messages.filter(m => m.archive).length,
       tous: messages.length
     }
   }
 
+  // ✅ NOUVEAU: Fonction pour obtenir la couleur selon les semaines restantes
+  const getCouleurFinFormation = (semaines) => {
+    switch (semaines) {
+      case 4: return { bg: '#22c55e', text: 'white', label: '4 SEM' } // Vert
+      case 3: return { bg: '#eab308', text: 'white', label: '3 SEM' } // Jaune
+      case 2: return { bg: '#f97316', text: 'white', label: '2 SEM' } // Orange
+      case 1: return { bg: '#ef4444', text: 'white', label: '1 SEM' } // Rouge
+      default: return { bg: '#6b7280', text: 'white', label: 'FIN' }
+    }
+  }
+
   const getBadgeStatut = (message) => {
+    // ✅ NOUVEAU: Badge spécial pour fin de formation avec code couleur
+    if (message.type === 'fin_formation') {
+      const couleur = getCouleurFinFormation(message.semaines_restantes)
+      return (
+        <span style={{
+          backgroundColor: couleur.bg,
+          color: couleur.text,
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontSize: '10px',
+          fontWeight: '600',
+          marginTop: '4px',
+          display: 'inline-block'
+        }}>
+          {couleur.label}
+        </span>
+      )
+    }
+
     if (message.statut_validation === 'a_traiter') {
       // ✅ NOUVEAU: Couleur différente selon le type de validation
       const couleur = message.objet === 'Validation de modification ponctuelle' ? '#ea580c' : '#dc2626'
-      
+
       return (
         <span style={{
           backgroundColor: couleur,
@@ -876,6 +913,27 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
             Non lus ({compteurs.non_lus})
           </div>
           
+          {/* ✅ NOUVEAU: Badge Fin de formation avec dégradé multicolore */}
+          <div
+            onClick={() => setFiltreActif('fin_formation')}
+            style={{
+              padding: '4px 8px',
+              background: filtreActif === 'fin_formation'
+                ? 'linear-gradient(90deg, #22c55e 0%, #eab308 33%, #f97316 66%, #ef4444 100%)'
+                : 'linear-gradient(90deg, #bbf7d0 0%, #fef08a 33%, #fed7aa 66%, #fecaca 100%)',
+              color: filtreActif === 'fin_formation' ? 'white' : '#374151',
+              border: `1px solid ${filtreActif === 'fin_formation' ? '#22c55e' : '#86efac'}`,
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              textShadow: filtreActif === 'fin_formation' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'
+            }}
+          >
+            Fin formation ({compteurs.fin_formation})
+          </div>
+
           <div
             onClick={() => setFiltreActif('archives')}
             style={{
@@ -920,6 +978,8 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
             <option value="validation_planning_traitees">Validations planning type traitées ({compteurs.validation_planning_traitees})</option>
             <option value="validation_modif_a_traiter">Validations modification à traiter ({compteurs.validation_modif_a_traiter})</option>
             <option value="validation_modif_traitees">Validations modification traitées ({compteurs.validation_modif_traitees})</option>
+            <option value="fin_formation">🎓 Fin de formation ({compteurs.fin_formation})</option>
+            <option value="fin_formation_archives">🎓 Fin formation archivées ({compteurs.fin_formation_archives})</option>
             <option value="archives">Archivés ({compteurs.archives})</option>
             <option value="tous">Tous les messages ({compteurs.tous})</option>
           </select>
@@ -1004,8 +1064,14 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                   onClick={() => ouvrirMessage(message)}
                   style={{
                     padding: '10px',
-                    backgroundColor: selectedMessage?.id === message.id ? '#eff6ff' : 
+                    backgroundColor: selectedMessage?.id === message.id ? '#eff6ff' :
                                    message.archive ? '#fef3c7' :
+                                   message.type === 'fin_formation' ? (
+                                     message.semaines_restantes === 4 ? '#dcfce7' :
+                                     message.semaines_restantes === 3 ? '#fef9c3' :
+                                     message.semaines_restantes === 2 ? '#ffedd5' :
+                                     message.semaines_restantes === 1 ? '#fee2e2' : '#f3f4f6'
+                                   ) :
                                    message.statut_validation === 'a_traiter' ? (
                                      message.objet === 'Validation de modification ponctuelle' ? '#fed7aa' : '#fee2e2'
                                    ) :
@@ -1013,8 +1079,14 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                     borderRadius: '6px',
                     marginBottom: '8px',
                     cursor: 'pointer',
-                    border: `1px solid ${selectedMessage?.id === message.id ? '#3b82f6' : 
+                    border: `1px solid ${selectedMessage?.id === message.id ? '#3b82f6' :
                                         message.archive ? '#f59e0b' :
+                                        message.type === 'fin_formation' ? (
+                                          message.semaines_restantes === 4 ? '#22c55e' :
+                                          message.semaines_restantes === 3 ? '#eab308' :
+                                          message.semaines_restantes === 2 ? '#f97316' :
+                                          message.semaines_restantes === 1 ? '#ef4444' : '#6b7280'
+                                        ) :
                                         message.statut_validation === 'a_traiter' ? (
                                           message.objet === 'Validation de modification ponctuelle' ? '#ea580c' : '#dc2626'
                                         ) :

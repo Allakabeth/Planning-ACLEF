@@ -57,6 +57,19 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
     const [showConfirmationDoublon, setShowConfirmationDoublon] = useState(false)
     const [doublonDetecte, setDoublonDetecte] = useState(null)
 
+    // États pour gestion des parcours
+    const [showParcoursModal, setShowParcoursModal] = useState(false)
+    const [apprenantParcours, setApprenantParcours] = useState(null)
+    const [parcoursApprenant, setParcoursApprenant] = useState([])
+    const [loadingParcours, setLoadingParcours] = useState(false)
+    const [showNouveauParcours, setShowNouveauParcours] = useState(false)
+    const [nouveauParcours, setNouveauParcours] = useState({
+        date_entree: '',
+        date_sortie_previsionnelle: '',
+        dispositif: 'HSP',
+        lieu_formation_id: ''
+    })
+
     useEffect(() => {
         fetchApprenants()
         fetchLieux()
@@ -153,13 +166,34 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
             if (error) throw error
 
             let apprenantsFiltres = data || []
-            
+
+            // Récupérer les stats de parcours pour tous les apprenants
+            const { data: parcoursList, error: parcoursError } = await supabase
+                .from('parcours_apprenants')
+                .select('apprenant_id, numero_parcours, actif')
+
+            // Créer un map des stats parcours par apprenant
+            const parcoursStats = {}
+            if (!parcoursError && parcoursList) {
+                parcoursList.forEach(p => {
+                    if (!parcoursStats[p.apprenant_id]) {
+                        parcoursStats[p.apprenant_id] = { total: 0, actif: 0 }
+                    }
+                    parcoursStats[p.apprenant_id].total = Math.max(parcoursStats[p.apprenant_id].total, p.numero_parcours)
+                    if (p.actif) {
+                        parcoursStats[p.apprenant_id].actif = p.numero_parcours
+                    }
+                })
+            }
+
             // Ajouter les infos calculées
             apprenantsFiltres = apprenantsFiltres.map(apprenant => ({
                 ...apprenant,
                 lieu_formation_nom: apprenant.lieu_formation?.nom || null,
                 lieu_couleur: apprenant.lieu_formation?.couleur || '#ffffff',
-                statut_display: getStatutDisplay(apprenant.statut_formation || 'en_cours')
+                statut_display: getStatutDisplay(apprenant.statut_formation || 'en_cours'),
+                parcours_actif: parcoursStats[apprenant.id]?.actif || 1,
+                parcours_total: parcoursStats[apprenant.id]?.total || 1
             }))
             
             // Filtre par statut
@@ -753,6 +787,121 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
     }
 
     const stats = compterApprenants()
+
+    // ========== FONCTIONS GESTION PARCOURS ==========
+
+    // Ouvrir le modal des parcours
+    const ouvrirParcours = async (apprenant) => {
+        setApprenantParcours(apprenant)
+        setShowParcoursModal(true)
+        setLoadingParcours(true)
+        setShowNouveauParcours(false)
+
+        try {
+            const { data, error } = await supabase
+                .from('parcours_apprenants')
+                .select(`
+                    *,
+                    lieu:lieu_formation_id(id, nom, couleur)
+                `)
+                .eq('apprenant_id', apprenant.id)
+                .order('numero_parcours', { ascending: true })
+
+            if (error) throw error
+            setParcoursApprenant(data || [])
+        } catch (error) {
+            console.error('Erreur chargement parcours:', error)
+            setParcoursApprenant([])
+        } finally {
+            setLoadingParcours(false)
+        }
+    }
+
+    // Créer un nouveau parcours
+    const creerNouveauParcours = async (e) => {
+        e.preventDefault()
+
+        if (!nouveauParcours.date_entree || !nouveauParcours.date_sortie_previsionnelle) {
+            setMessage('Les dates sont obligatoires')
+            setTimeout(() => setMessage(''), 4000)
+            return
+        }
+
+        setIsLoading(true)
+        try {
+            // 1. Terminer le parcours actif actuel
+            const parcoursActif = parcoursApprenant.find(p => p.actif)
+            if (parcoursActif) {
+                const { error: erreurTerminer } = await supabase
+                    .from('parcours_apprenants')
+                    .update({
+                        actif: false,
+                        statut: 'termine',
+                        date_fin_reelle: parcoursActif.date_sortie_previsionnelle
+                    })
+                    .eq('id', parcoursActif.id)
+
+                if (erreurTerminer) throw erreurTerminer
+            }
+
+            // 2. Créer le nouveau parcours
+            const nouveauNumero = parcoursApprenant.length + 1
+            const { error: erreurCreation } = await supabase
+                .from('parcours_apprenants')
+                .insert({
+                    apprenant_id: apprenantParcours.id,
+                    date_entree: nouveauParcours.date_entree,
+                    date_sortie_previsionnelle: nouveauParcours.date_sortie_previsionnelle,
+                    dispositif: nouveauParcours.dispositif,
+                    lieu_formation_id: nouveauParcours.lieu_formation_id || null,
+                    statut: 'en_cours',
+                    actif: true,
+                    numero_parcours: nouveauNumero
+                })
+
+            if (erreurCreation) throw erreurCreation
+
+            // 3. Mettre à jour la table users avec les nouvelles infos
+            const { error: erreurUsers } = await supabase
+                .from('users')
+                .update({
+                    date_entree_formation: nouveauParcours.date_entree,
+                    date_sortie_previsionnelle: nouveauParcours.date_sortie_previsionnelle,
+                    dispositif: nouveauParcours.dispositif,
+                    lieu_formation_id: nouveauParcours.lieu_formation_id || null,
+                    statut_formation: 'en_cours'
+                })
+                .eq('id', apprenantParcours.id)
+
+            if (erreurUsers) throw erreurUsers
+
+            setMessage(`✅ Nouveau parcours créé pour ${apprenantParcours.prenom} ${apprenantParcours.nom}`)
+            setTimeout(() => setMessage(''), 4000)
+
+            // Recharger les données
+            setShowNouveauParcours(false)
+            setNouveauParcours({
+                date_entree: '',
+                date_sortie_previsionnelle: '',
+                dispositif: 'HSP',
+                lieu_formation_id: ''
+            })
+            await ouvrirParcours(apprenantParcours) // Recharger les parcours
+            await fetchApprenants() // Recharger la liste
+
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`)
+            setTimeout(() => setMessage(''), 4000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // Obtenir le nombre de parcours pour un apprenant
+    const getNombreParcours = (apprenantId) => {
+        // On le calcule à partir des données chargées ou on retourne 1 par défaut
+        return 1 // Sera mis à jour dynamiquement lors de l'ouverture du modal
+    }
 
     return (
         <>
@@ -1516,6 +1665,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Prénom</th>
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Nom</th>
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Dispositif</th>
+                                <th style={{ padding: '8px', textAlign: 'center', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Parcours</th>
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Lieu</th>
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Statut Formation</th>
                                 <th style={{ padding: '8px', textAlign: 'left', color: '#6b7280', fontWeight: '600', fontSize: '12px' }}>Dates Formation</th>
@@ -1563,8 +1713,28 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                             {apprenant.dispositif || 'HSP'}
                                         </span>
                                     </td>
-                                    <td style={{ 
-                                        padding: '8px', 
+                                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                                        <span
+                                            onClick={() => ouvrirParcours(apprenant)}
+                                            title="Voir l'historique des parcours"
+                                            style={{
+                                                padding: '4px 10px',
+                                                borderRadius: '20px',
+                                                fontSize: '11px',
+                                                fontWeight: '600',
+                                                background: apprenant.parcours_total > 1
+                                                    ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
+                                                    : '#f3f4f6',
+                                                color: apprenant.parcours_total > 1 ? 'white' : '#6b7280',
+                                                cursor: 'pointer',
+                                                display: 'inline-block'
+                                            }}
+                                        >
+                                            {apprenant.parcours_actif}/{apprenant.parcours_total}
+                                        </span>
+                                    </td>
+                                    <td style={{
+                                        padding: '8px',
                                         fontSize: '12px',
                                         backgroundColor: apprenant.lieu_couleur ? apprenant.lieu_couleur : '#ffffff',
                                         color: apprenant.lieu_couleur ? '#ffffff' : '#6b7280',
@@ -1662,6 +1832,21 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                             </div>
                                         ) : (
                                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={() => ouvrirParcours(apprenant)}
+                                                    title="Voir l'historique des parcours"
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Parcours
+                                                </button>
                                                 <button
                                                     onClick={() => initierModification(apprenant)}
                                                     disabled={!canEdit}
@@ -2047,6 +2232,378 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 ✅ Créer quand même
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Parcours */}
+            {showParcoursModal && apprenantParcours && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        padding: '30px',
+                        width: '700px',
+                        maxHeight: '80vh',
+                        overflow: 'auto',
+                        boxShadow: '0 25px 50px rgba(0,0,0,0.3)'
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                            paddingBottom: '15px',
+                            borderBottom: '2px solid #8b5cf6'
+                        }}>
+                            <h3 style={{ margin: 0, color: '#7c3aed', fontSize: '20px' }}>
+                                📋 Parcours de {apprenantParcours.prenom} {apprenantParcours.nom}
+                            </h3>
+                            <button
+                                onClick={() => setShowParcoursModal(false)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '24px',
+                                    cursor: 'pointer',
+                                    color: '#6b7280'
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Contenu */}
+                        {loadingParcours ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                                ⏳ Chargement des parcours...
+                            </div>
+                        ) : parcoursApprenant.length === 0 ? (
+                            <div style={{
+                                textAlign: 'center',
+                                padding: '40px',
+                                backgroundColor: '#f3f4f6',
+                                borderRadius: '8px',
+                                color: '#6b7280'
+                            }}>
+                                <p style={{ marginBottom: '15px' }}>Aucun parcours enregistré</p>
+                                <p style={{ fontSize: '14px' }}>
+                                    Les dates actuelles de la fiche seront utilisées comme premier parcours.
+                                </p>
+                            </div>
+                        ) : (
+                            <div style={{ marginBottom: '20px' }}>
+                                {parcoursApprenant.map((parcours, index) => (
+                                    <div
+                                        key={parcours.id}
+                                        style={{
+                                            padding: '15px',
+                                            marginBottom: '10px',
+                                            borderRadius: '8px',
+                                            border: parcours.actif ? '2px solid #10b981' : '1px solid #e5e7eb',
+                                            backgroundColor: parcours.actif ? '#ecfdf5' : '#f9fafb'
+                                        }}
+                                    >
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            marginBottom: '10px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <span style={{
+                                                    padding: '4px 10px',
+                                                    borderRadius: '20px',
+                                                    fontSize: '12px',
+                                                    fontWeight: 'bold',
+                                                    backgroundColor: parcours.actif ? '#10b981' : '#6b7280',
+                                                    color: 'white'
+                                                }}>
+                                                    Parcours {parcours.numero_parcours}
+                                                </span>
+                                                {parcours.actif && (
+                                                    <span style={{
+                                                        padding: '4px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '600',
+                                                        backgroundColor: '#d1fae5',
+                                                        color: '#065f46'
+                                                    }}>
+                                                        ✅ ACTIF
+                                                    </span>
+                                                )}
+                                                <span style={{
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '11px',
+                                                    fontWeight: '500',
+                                                    backgroundColor: parcours.dispositif === 'HSP' ? '#dbeafe' :
+                                                                    parcours.dispositif === 'OPCO' ? '#fef3c7' : '#e0e7ff',
+                                                    color: parcours.dispositif === 'HSP' ? '#1e40af' :
+                                                           parcours.dispositif === 'OPCO' ? '#92400e' : '#4338ca'
+                                                }}>
+                                                    {parcours.dispositif}
+                                                </span>
+                                            </div>
+                                            <span style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '11px',
+                                                fontWeight: '500',
+                                                backgroundColor:
+                                                    parcours.statut === 'en_cours' ? '#dbeafe' :
+                                                    parcours.statut === 'termine' ? '#d1fae5' :
+                                                    parcours.statut === 'suspendu' ? '#fef3c7' : '#fee2e2',
+                                                color:
+                                                    parcours.statut === 'en_cours' ? '#1e40af' :
+                                                    parcours.statut === 'termine' ? '#065f46' :
+                                                    parcours.statut === 'suspendu' ? '#92400e' : '#dc2626'
+                                            }}>
+                                                {parcours.statut === 'en_cours' ? 'En cours' :
+                                                 parcours.statut === 'termine' ? 'Terminé' :
+                                                 parcours.statut === 'suspendu' ? 'Suspendu' : 'Abandonné'}
+                                            </span>
+                                        </div>
+
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr 1fr 1fr',
+                                            gap: '15px',
+                                            fontSize: '13px'
+                                        }}>
+                                            <div>
+                                                <span style={{ color: '#6b7280' }}>📅 Entrée :</span>
+                                                <strong style={{ marginLeft: '5px' }}>
+                                                    {formatDate(parcours.date_entree)}
+                                                </strong>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: '#6b7280' }}>🎯 Sortie prévue :</span>
+                                                <strong style={{ marginLeft: '5px' }}>
+                                                    {formatDate(parcours.date_sortie_previsionnelle)}
+                                                </strong>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: '#6b7280' }}>📍 Lieu :</span>
+                                                <strong style={{ marginLeft: '5px' }}>
+                                                    {parcours.lieu?.nom || 'Non défini'}
+                                                </strong>
+                                            </div>
+                                        </div>
+
+                                        {parcours.date_fin_reelle && (
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '8px',
+                                                backgroundColor: parcours.actif ? '#d1fae5' : '#f3f4f6',
+                                                borderRadius: '4px',
+                                                fontSize: '12px'
+                                            }}>
+                                                ✅ Fin réelle : <strong>{formatDate(parcours.date_fin_reelle)}</strong>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Bouton Nouveau Parcours */}
+                        {!showNouveauParcours ? (
+                            <button
+                                onClick={() => setShowNouveauParcours(true)}
+                                disabled={!canEdit}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    background: !canEdit ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    fontWeight: '600',
+                                    cursor: !canEdit ? 'not-allowed' : 'pointer',
+                                    opacity: !canEdit ? 0.6 : 1
+                                }}
+                            >
+                                ➕ Créer un nouveau parcours
+                            </button>
+                        ) : (
+                            /* Formulaire nouveau parcours */
+                            <div style={{
+                                padding: '20px',
+                                backgroundColor: '#ecfdf5',
+                                borderRadius: '8px',
+                                border: '2px solid #10b981'
+                            }}>
+                                <h4 style={{ margin: '0 0 15px 0', color: '#065f46' }}>
+                                    ➕ Nouveau parcours
+                                </h4>
+                                <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '15px' }}>
+                                    Le parcours actuel sera automatiquement marqué comme "terminé".
+                                </p>
+
+                                <form onSubmit={creerNouveauParcours}>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: '15px',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#065f46' }}>
+                                                Date d'entrée *
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={nouveauParcours.date_entree}
+                                                onChange={(e) => setNouveauParcours({...nouveauParcours, date_entree: e.target.value})}
+                                                required
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    border: '1px solid #10b981',
+                                                    borderRadius: '6px',
+                                                    fontSize: '14px'
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#065f46' }}>
+                                                Date sortie prévisionnelle *
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={nouveauParcours.date_sortie_previsionnelle}
+                                                onChange={(e) => setNouveauParcours({...nouveauParcours, date_sortie_previsionnelle: e.target.value})}
+                                                required
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    border: '1px solid #10b981',
+                                                    borderRadius: '6px',
+                                                    fontSize: '14px'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr',
+                                        gap: '15px',
+                                        marginBottom: '20px'
+                                    }}>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#065f46' }}>
+                                                Dispositif
+                                            </label>
+                                            <select
+                                                value={nouveauParcours.dispositif}
+                                                onChange={(e) => setNouveauParcours({...nouveauParcours, dispositif: e.target.value})}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    border: '1px solid #10b981',
+                                                    borderRadius: '6px',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                <option value="HSP">HSP</option>
+                                                <option value="OPCO">OPCO</option>
+                                                <option value="CDV">CDV</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', color: '#065f46' }}>
+                                                Lieu de formation
+                                            </label>
+                                            <select
+                                                value={nouveauParcours.lieu_formation_id}
+                                                onChange={(e) => setNouveauParcours({...nouveauParcours, lieu_formation_id: e.target.value})}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    border: '1px solid #10b981',
+                                                    borderRadius: '6px',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                <option value="">Sélectionner lieu...</option>
+                                                {lieux.map((lieu) => (
+                                                    <option key={lieu.id} value={lieu.id}>{lieu.nom}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNouveauParcours(false)}
+                                            style={{
+                                                flex: 1,
+                                                padding: '10px',
+                                                backgroundColor: '#6b7280',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                fontWeight: '500'
+                                            }}
+                                        >
+                                            Annuler
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={isLoading}
+                                            style={{
+                                                flex: 1,
+                                                padding: '10px',
+                                                backgroundColor: isLoading ? '#9ca3af' : '#10b981',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                cursor: isLoading ? 'not-allowed' : 'pointer',
+                                                fontWeight: '500'
+                                            }}
+                                        >
+                                            {isLoading ? 'Création...' : '✅ Créer le parcours'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+
+                        {/* Bouton Fermer */}
+                        <button
+                            onClick={() => setShowParcoursModal(false)}
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                marginTop: '15px',
+                                backgroundColor: '#f3f4f6',
+                                color: '#374151',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Fermer
+                        </button>
                     </div>
                 </div>
             )}
