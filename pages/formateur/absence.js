@@ -829,26 +829,48 @@ export default function AbsenceFormateur() {
                         </button>
                     </div>
                     <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px'}}>
-                        <button
-                            onClick={() => {
-                                setModeSelection('annuler_case');
-                                setMessage('Mode ANNULER CASE activé');
-                            }}
-                            style={{
-                                padding: '8px',
-                                borderRadius: '8px',
-                                border: modeSelection === 'annuler_case' ? '2px solid #fbbf24' : 'none',
-                                backgroundColor: '#d1d5db',
-                                color: '#374151',
-                                fontWeight: 'bold',
-                                fontSize: '8px',
-                                cursor: 'pointer',
-                                textAlign: 'center'
-                            }}
-                        >
-                            ANNULER CASE
-                        </button>
-                        
+                        {/* Bouton Envoyer en haut si modifications */}
+                        {aDesModifications() ? (
+                            <button
+                                onClick={handleValider}
+                                disabled={envoiEnCours}
+                                style={{
+                                    padding: '8px',
+                                    borderRadius: '8px',
+                                    border: '2px solid #10b981',
+                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                    color: 'white',
+                                    fontWeight: 'bold',
+                                    fontSize: '8px',
+                                    cursor: envoiEnCours ? 'not-allowed' : 'pointer',
+                                    textAlign: 'center',
+                                    opacity: envoiEnCours ? 0.6 : 1
+                                }}
+                            >
+                                ENVOYER
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => {
+                                    setModeSelection('annuler_case');
+                                    setMessage('Mode ANNULER CASE activé');
+                                }}
+                                style={{
+                                    padding: '8px',
+                                    borderRadius: '8px',
+                                    border: modeSelection === 'annuler_case' ? '2px solid #fbbf24' : 'none',
+                                    backgroundColor: '#d1d5db',
+                                    color: '#374151',
+                                    fontWeight: 'bold',
+                                    fontSize: '8px',
+                                    cursor: 'pointer',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                ANNULER CASE
+                            </button>
+                        )}
+
                         <button
                             onClick={annulerDerniereAction}
                             style={{
@@ -865,7 +887,7 @@ export default function AbsenceFormateur() {
                         >
                             ANNULER
                         </button>
-                        
+
                         <button
                             onClick={effacerTout}
                             style={{
