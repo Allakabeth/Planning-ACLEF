@@ -876,9 +876,9 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
             if (erreurUsers) throw erreurUsers
 
             setMessage(`✅ Nouveau parcours créé pour ${apprenantParcours.prenom} ${apprenantParcours.nom}`)
-            setTimeout(() => setMessage(''), 4000)
 
-            // Recharger les données
+            // Fermer le modal et rediriger vers planning-type-apprenants avec l'apprenant pré-sélectionné
+            setShowParcoursModal(false)
             setShowNouveauParcours(false)
             setNouveauParcours({
                 date_entree: '',
@@ -886,8 +886,9 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 dispositif: 'HSP',
                 lieu_formation_id: ''
             })
-            await ouvrirParcours(apprenantParcours) // Recharger les parcours
-            await fetchApprenants() // Recharger la liste
+
+            // Rediriger vers planning-type-apprenants avec l'apprenant sélectionné
+            router.push(`/planning-type-apprenants?apprenant=${apprenantParcours.id}`)
 
         } catch (error) {
             setMessage(`❌ Erreur : ${error.message}`)
