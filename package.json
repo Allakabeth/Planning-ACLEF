@@ -13,10 +13,10 @@
     "bcryptjs": "^3.0.2",
     "exceljs": "^4.4.0",
     "jsonwebtoken": "^9.0.2",
-    "next": "15.4.6",
+    "next": "^15.4.8",
     "pdfkit": "^0.17.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "^19.1.2",
+    "react-dom": "^19.1.2",
     "xlsx": "^0.18.5"
   }
 }
