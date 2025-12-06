@@ -6,7 +6,8 @@ import { supabase } from '../../../lib/supabaseClient'
  * Envoie des alertes 4, 3, 2, 1 semaine(s) avant la date de fin prévue
  * Appelé quotidiennement par le cron Vercel à 7h30
  *
- * GET: Aperçu des notifications à envoyer (sans envoi)
+ * GET: Envoi des notifications (utilisé par le cron Vercel)
+ * GET avec ?preview=true: Aperçu sans envoi
  * POST: Envoi effectif des notifications
  */
 
@@ -97,8 +98,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Mode aperçu (GET)
-    if (req.method === 'GET') {
+    // Mode aperçu (GET avec ?preview=true)
+    if (req.method === 'GET' && req.query.preview === 'true') {
       return res.status(200).json({
         success: true,
         mode: 'apercu',
@@ -116,8 +117,8 @@ export default async function handler(req, res) {
       })
     }
 
-    // Mode envoi (POST)
-    if (req.method === 'POST') {
+    // Mode envoi (GET pour cron Vercel ou POST)
+    if (req.method === 'POST' || req.method === 'GET') {
       const resultats = {
         envoyes: 0,
         erreurs: 0,
