@@ -296,25 +296,41 @@ export default function MenuApprenants({
                error ? '❌ Erreur' :
                'Apprenant'}
             </option>
-            {!disabled && !loading && !error && apprenantsDisponibles
-              .filter(a => {
-                // Logique anti-doublons identique à l'existant
-                const currentSelections = selectedApprenants || [];
-                return !currentSelections.includes(a.id) || currentSelections[i] === a.id;
-              })
-              .map(a => (
-                <option
-                  key={a.id}
-                  value={a.id}
-                  style={{
-                    backgroundColor: a.statutAbsence === 'presence_exceptionnelle' ? '#ff9800' : 'inherit',
-                    color: a.statutAbsence === 'presence_exceptionnelle' ? 'white' : 'inherit'
-                  }}
-                >
-                  {a.statutAbsence === 'presence_exceptionnelle' ? '✨ ' : ''}{a.prenom} {a.nom}
-                  {a.statutAbsence === 'presence_exceptionnelle' && a.lieuExceptionnel ? ` (${a.lieuExceptionnel})` : ''}
-                </option>
-              ))}
+            {!disabled && !loading && !error && (() => {
+              // Fusionner apprenants disponibles + apprenants historiques (déjà sélectionnés mais plus dans planning type)
+              const idsDisponibles = apprenantsDisponibles.map(a => a.id);
+              const apprenantsHistoriques = selectedApprenants
+                .filter(id => id && !idsDisponibles.includes(id))
+                .map(id => {
+                  const apprenant = apprenants.find(a => a.id === id);
+                  return apprenant ? { ...apprenant, isHistorique: true } : null;
+                })
+                .filter(Boolean);
+
+              const tousLesApprenants = [...apprenantsDisponibles, ...apprenantsHistoriques];
+
+              return tousLesApprenants
+                .filter(a => {
+                  // Logique anti-doublons identique à l'existant
+                  const currentSelections = selectedApprenants || [];
+                  return !currentSelections.includes(a.id) || currentSelections[i] === a.id;
+                })
+                .map(a => (
+                  <option
+                    key={a.id}
+                    value={a.id}
+                    style={{
+                      backgroundColor: a.statutAbsence === 'presence_exceptionnelle' ? '#ff9800' :
+                                       a.isHistorique ? '#e0e0e0' : 'inherit',
+                      color: a.statutAbsence === 'presence_exceptionnelle' ? 'white' : 'inherit'
+                    }}
+                  >
+                    {a.statutAbsence === 'presence_exceptionnelle' ? '✨ ' : ''}
+                    {a.isHistorique ? '🔒 ' : ''}{a.prenom} {a.nom}
+                    {a.statutAbsence === 'presence_exceptionnelle' && a.lieuExceptionnel ? ` (${a.lieuExceptionnel})` : ''}
+                  </option>
+                ));
+            })()}
           </select>
         </div>
         )
