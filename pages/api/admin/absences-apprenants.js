@@ -186,15 +186,49 @@ async function handlePost(req, res) {
 // PUT - Modifier une absence existante
 async function handlePut(req, res) {
     try {
-        const { id, motif, statut } = req.body
+        const {
+            id,
+            apprenant_id,
+            type,
+            date_debut,
+            date_fin,
+            date_specifique,
+            creneau,
+            lieu_id,
+            motif,
+            statut
+        } = req.body
 
         if (!id) {
             return res.status(400).json({ error: 'ID requis pour la modification' })
         }
 
-        const updateData = {}
+        // Construire les données de mise à jour
+        const updateData = { updated_at: new Date().toISOString() }
+
+        if (apprenant_id !== undefined) updateData.apprenant_id = apprenant_id
+        if (type !== undefined) updateData.type = type
         if (motif !== undefined) updateData.motif = motif
         if (statut !== undefined) updateData.statut = statut
+
+        // Gérer les dates selon le type
+        if (type === 'absence_periode') {
+            updateData.date_debut = date_debut
+            updateData.date_fin = date_fin
+            updateData.date_specifique = null
+            updateData.creneau = null
+            updateData.lieu_id = null
+        } else if (type === 'absence_ponctuelle' || type === 'presence_exceptionnelle') {
+            updateData.date_specifique = date_specifique
+            updateData.creneau = creneau
+            updateData.date_debut = null
+            updateData.date_fin = null
+            if (type === 'presence_exceptionnelle') {
+                updateData.lieu_id = lieu_id
+            } else {
+                updateData.lieu_id = null
+            }
+        }
 
         const { data, error } = await supabaseAdmin
             .from('absences_apprenants')

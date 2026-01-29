@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
 // RÉACTIVATION PROGRESSIVE - Étape 1
 import MenuApprenants from '../components/MenuApprenants';
+import { isNextWeek, genererPlanningDepuisType } from '../lib/planningTypeUtils';
 
 const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
@@ -434,6 +435,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     
     // États pour coloration persistante post-enregistrement
     const [couleursEnregistrees, setCouleursEnregistrees] = useState({});
+
     
     // États de contrôle
     const [isLoading, setIsLoading] = useState(false);
@@ -1170,6 +1172,43 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                         }
                     }
                 });
+            }
+
+            // ✨ PRÉ-REMPLISSAGE S+1 : Si semaine suivante et cases vides, compléter depuis planning type
+            if (isNextWeek(targetDate)) {
+                const hasData = Object.values(newFormateursParCase).some(arr => arr.length > 0) ||
+                               Object.values(newApprenantsParCase).some(arr => arr.length > 0);
+
+                if (!hasData) {
+                    const planningType = await genererPlanningDepuisType(weekDates, absencesValidees, absencesApprenants);
+
+                    if (planningType) {
+                        // Fusionner les données du planning type
+                        Object.keys(planningType.formateursParCase).forEach(key => {
+                            if (!newFormateursParCase[key] || newFormateursParCase[key].length === 0) {
+                                newFormateursParCase[key] = planningType.formateursParCase[key];
+                            }
+                        });
+                        Object.keys(planningType.apprenantsParCase).forEach(key => {
+                            if (!newApprenantsParCase[key] || newApprenantsParCase[key].length === 0) {
+                                newApprenantsParCase[key] = planningType.apprenantsParCase[key];
+                            }
+                        });
+                        Object.keys(planningType.lieuxSelectionnes).forEach(key => {
+                            if (!newLieuxSelectionnes[key]) {
+                                newLieuxSelectionnes[key] = planningType.lieuxSelectionnes[key];
+                            }
+                        });
+                        Object.keys(planningType.lieuxParJour).forEach(dayIndex => {
+                            if (!newLieuxParJour[dayIndex] || newLieuxParJour[dayIndex].length <= 1) {
+                                newLieuxParJour[dayIndex] = planningType.lieuxParJour[dayIndex];
+                            }
+                        });
+
+                        setMessage('Planning pré-rempli depuis planning type (S+1)');
+                        setTimeout(() => setMessage(''), 4000);
+                    }
+                }
             }
 
             setApprenantsParCase(newApprenantsParCase);
@@ -2584,6 +2623,20 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             }}
                         >
                             Accueil
+                        </button>
+                        <button
+                            onClick={() => router.push('/visualisation-planning-type')}
+                            style={{
+                                padding: '8px 16px',
+                                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '14px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Planning Type
                         </button>
                         <button
                             onClick={logout}

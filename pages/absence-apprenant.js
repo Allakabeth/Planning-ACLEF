@@ -180,6 +180,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
   const [filtreNom, setFiltreNom] = useState(''); // Filtre par nom d'apprenant
   const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
   const [apprenantsVerrouilles, setApprenantsVerrouilles] = useState([]); // Apprenants en cours d'édition
+  const [editingId, setEditingId] = useState(null); // ID de l'absence en cours de modification
 
   // État du formulaire
   const [formData, setFormData] = useState({
@@ -398,20 +399,22 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     setSuccess('');
 
     try {
+      const isEditing = editingId !== null;
       const response = await fetch('/api/admin/absences-apprenants', {
-        method: 'POST',
+        method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(isEditing ? { ...formData, id: editingId } : formData),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Erreur lors de la création');
+        throw new Error(errorData.error || (isEditing ? 'Erreur lors de la modification' : 'Erreur lors de la création'));
       }
 
-      setSuccess('Absence créée avec succès');
+      setSuccess(isEditing ? 'Absence modifiée avec succès' : 'Absence créée avec succès');
+      setEditingId(null);
       setFormData({
         type: 'absence_periode',
         apprenant_id: '',
@@ -425,7 +428,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
 
       await loadAbsences();
     } catch (error) {
-      console.error('Erreur création absence:', error);
+      console.error('Erreur absence:', error);
       setError(error.message);
     }
   };
@@ -446,6 +449,38 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
       console.error('Erreur suppression:', error);
       setError('Erreur lors de la suppression');
     }
+  };
+
+  const handleEdit = (absence) => {
+    setEditingId(absence.id);
+    setFormData({
+      type: absence.type,
+      apprenant_id: absence.apprenant_id,
+      date_debut: absence.date_debut || '',
+      date_fin: absence.date_fin || '',
+      date_specifique: absence.date_specifique || '',
+      creneau: absence.creneau || '',
+      lieu_id: absence.lieu_id || '',
+      motif: absence.motif || ''
+    });
+    setError('');
+    setSuccess('');
+    // Scroll vers le formulaire
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setFormData({
+      type: 'absence_periode',
+      apprenant_id: '',
+      date_debut: '',
+      date_fin: '',
+      date_specifique: '',
+      creneau: '',
+      lieu_id: '',
+      motif: ''
+    });
   };
 
   const handleInputChange = async (e) => {
@@ -692,7 +727,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
         backdropFilter: 'blur(10px)'
       }}>
         <h2 style={{ fontSize: '1.5rem', marginBottom: '20px', color: '#333' }}>
-          ➕ Nouvelle absence/présence
+          {editingId ? '✏️ Modifier l\'absence/présence' : '➕ Nouvelle absence/présence'}
         </h2>
 
         {/* Bandeau d'avertissement si apprenant verrouillé */}
@@ -947,24 +982,44 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={!canEdit}
-            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
-            style={{
-              background: !canEdit ? '#94a3b8' : '#4CAF50',
-              color: 'white',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: '6px',
-              fontSize: '16px',
-              cursor: !canEdit ? 'not-allowed' : 'pointer',
-              fontWeight: 'bold',
-              opacity: !canEdit ? 0.6 : 1
-            }}
-          >
-            💾 Enregistrer
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="submit"
+              disabled={!canEdit}
+              title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+              style={{
+                background: !canEdit ? '#94a3b8' : '#4CAF50',
+                color: 'white',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '6px',
+                fontSize: '16px',
+                cursor: !canEdit ? 'not-allowed' : 'pointer',
+                fontWeight: 'bold',
+                opacity: !canEdit ? 0.6 : 1
+              }}
+            >
+              {editingId ? '✏️ Modifier' : '💾 Enregistrer'}
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                style={{
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                ❌ Annuler
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -1076,23 +1131,42 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                       </div>
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleDelete(absence.id)}
-                        disabled={!canEdit}
-                        title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
-                        style={{
-                          background: !canEdit ? '#94a3b8' : '#ff4757',
-                          color: 'white',
-                          border: 'none',
-                          padding: '6px 12px',
-                          borderRadius: '4px',
-                          cursor: !canEdit ? 'not-allowed' : 'pointer',
-                          fontSize: '12px',
-                          opacity: !canEdit ? 0.6 : 1
-                        }}
-                      >
-                        🗑️ Supprimer
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => handleEdit(absence)}
+                          disabled={!canEdit}
+                          title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                          style={{
+                            background: !canEdit ? '#94a3b8' : '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            cursor: !canEdit ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            opacity: !canEdit ? 0.6 : 1
+                          }}
+                        >
+                          ✏️ Modifier
+                        </button>
+                        <button
+                          onClick={() => handleDelete(absence.id)}
+                          disabled={!canEdit}
+                          title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                          style={{
+                            background: !canEdit ? '#94a3b8' : '#ff4757',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            cursor: !canEdit ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            opacity: !canEdit ? 0.6 : 1
+                          }}
+                        >
+                          🗑️ Supprimer
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   ))}

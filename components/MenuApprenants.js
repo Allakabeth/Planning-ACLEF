@@ -279,8 +279,8 @@ export default function MenuApprenants({
               borderRadius: '3px',
               fontSize: '10px',
               background: isPresenceExceptionnelle ?
-                'linear-gradient(135deg, #ff9800, #ffb74d)' :
-                (couleurEnregistree || 'rgba(255,255,255,0.9)'),
+                           'linear-gradient(135deg, #ff9800, #ffb74d)' :
+                           (couleurEnregistree || 'rgba(255,255,255,0.9)'),
               color: isPresenceExceptionnelle ? 'white' : '#000000',
               marginBottom: '3px',
               fontWeight: isPresenceExceptionnelle ? 'bold' : 'normal',
