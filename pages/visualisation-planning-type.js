@@ -111,7 +111,12 @@ function VisualisationPlanningType() {
                 maxLieu = lieu;
             }
         });
-        
+
+        // Si pas d'historique, mettre CCP par defaut
+        if (!maxLieu) {
+            maxLieu = 'Centre Camille Pagé';
+        }
+
         return maxLieu;
     };
 
