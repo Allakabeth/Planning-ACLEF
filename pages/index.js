@@ -501,12 +501,13 @@ function Dashboard() {
 
 
   const gestionItems = [
+    { title: "Absence Apprenant", icon: "🎓", href: "/absence-apprenant" },
     { title: "Gestion Formateurs", icon: "👨‍🏫", href: "/gestion-formateurs" },
     { title: "Gestion Apprenants", icon: "👨‍🎓", href: "/gestion-apprenants" },
     { title: "Gestion Salariés", icon: "👷‍♂️", href: "/gestion-salaries" },
     { title: "Gestion Lieux", icon: "📍", href: "/gestion-lieux" },
     { title: "Gestion Présences Formateur", icon: "📊", href: "/gestion-absences-formateur" },
-    { title: "Absence Apprenant", icon: "🎓", href: "/absence-apprenant" }
+    { title: "Comparaison Dates Excel", icon: "📊", href: "/comparaison-dates-excel" }
   ]
 
 

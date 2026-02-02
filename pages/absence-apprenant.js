@@ -191,7 +191,8 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     date_specifique: '',
     creneau: '',
     lieu_id: '',
-    motif: ''
+    motif: '',
+    commentaire: ''
   });
 
   // 🎯 MODE ÉDITION : On peut modifier SI l'apprenant sélectionné n'est PAS verrouillé par un autre admin
@@ -423,7 +424,8 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
         date_specifique: '',
         creneau: '',
         lieu_id: '',
-        motif: ''
+        motif: '',
+        commentaire: ''
       });
 
       await loadAbsences();
@@ -461,7 +463,8 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
       date_specifique: absence.date_specifique || '',
       creneau: absence.creneau || '',
       lieu_id: absence.lieu_id || '',
-      motif: absence.motif || ''
+      motif: absence.motif || '',
+      commentaire: absence.commentaire || ''
     });
     setError('');
     setSuccess('');
@@ -532,6 +535,11 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       padding: '40px 60px'
     }}>
+      <style jsx>{`
+        @media print {
+          .no-print { display: none !important; }
+        }
+      `}</style>
       {/* Header Navigation */}
       <div style={{
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -956,30 +964,56 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
             )}
           </div>
 
-          {/* Motif */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-              Motif (optionnel)
-            </label>
-            <textarea
-              name="motif"
-              value={formData.motif}
-              onChange={handleInputChange}
-              rows="3"
-              disabled={!canEdit}
-              title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '6px',
-                border: '1px solid #ddd',
-                fontSize: '16px',
-                resize: 'vertical',
-                cursor: !canEdit ? 'not-allowed' : 'text',
-                opacity: !canEdit ? 0.6 : 1
-              }}
-              placeholder="Motif de l'absence ou présence exceptionnelle..."
-            />
+          {/* Motif et Commentaire côte à côte */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                Motif (optionnel)
+              </label>
+              <textarea
+                name="motif"
+                value={formData.motif}
+                onChange={handleInputChange}
+                rows="3"
+                disabled={!canEdit}
+                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '16px',
+                  resize: 'vertical',
+                  cursor: !canEdit ? 'not-allowed' : 'text',
+                  opacity: !canEdit ? 0.6 : 1
+                }}
+                placeholder="Motif (visible à l'impression)..."
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+                Commentaire (optionnel)
+              </label>
+              <textarea
+                name="commentaire"
+                value={formData.commentaire}
+                onChange={handleInputChange}
+                rows="3"
+                disabled={!canEdit}
+                title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '6px',
+                  border: '1px solid #ddd',
+                  fontSize: '16px',
+                  resize: 'vertical',
+                  cursor: !canEdit ? 'not-allowed' : 'text',
+                  opacity: !canEdit ? 0.6 : 1
+                }}
+                placeholder="Commentaire interne (non imprimé)..."
+              />
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -1082,7 +1116,8 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                     <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Date(s)</th>
                     <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Détails</th>
                     <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Motif</th>
-                    <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
+                    <th className="no-print" style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Commentaire</th>
+                    <th className="no-print" style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1119,7 +1154,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: '12px', maxWidth: '200px' }}>
+                    <td style={{ padding: '12px', maxWidth: '150px' }}>
                       <div style={{
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -1130,7 +1165,18 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
                         {absence.motif || '-'}
                       </div>
                     </td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                    <td className="no-print" style={{ padding: '12px', maxWidth: '150px' }}>
+                      <div style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: '14px',
+                        color: '#666'
+                      }}>
+                        {absence.commentaire || '-'}
+                      </div>
+                    </td>
+                    <td className="no-print" style={{ padding: '12px', textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                         <button
                           onClick={() => handleEdit(absence)}

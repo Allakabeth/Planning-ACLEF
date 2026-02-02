@@ -32,6 +32,7 @@ async function handleGet(req, res) {
                 creneau,
                 lieu_id,
                 motif,
+                commentaire,
                 statut,
                 created_at,
                 updated_at,
@@ -101,7 +102,8 @@ async function handlePost(req, res) {
             date_specifique,
             creneau,
             lieu_id,
-            motif
+            motif,
+            commentaire
         } = req.body
 
         // Validation des données selon le type
@@ -155,6 +157,7 @@ async function handlePost(req, res) {
             apprenant_id,
             type,
             motif,
+            commentaire,
             statut: 'actif'
         }
 
@@ -196,6 +199,7 @@ async function handlePut(req, res) {
             creneau,
             lieu_id,
             motif,
+            commentaire,
             statut
         } = req.body
 
@@ -209,6 +213,7 @@ async function handlePut(req, res) {
         if (apprenant_id !== undefined) updateData.apprenant_id = apprenant_id
         if (type !== undefined) updateData.type = type
         if (motif !== undefined) updateData.motif = motif
+        if (commentaire !== undefined) updateData.commentaire = commentaire
         if (statut !== undefined) updateData.statut = statut
 
         // Gérer les dates selon le type
