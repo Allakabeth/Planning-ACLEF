@@ -446,6 +446,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [seanceSelectionnee, setSeanceSelectionnee] = useState(null);
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     const [showModalAbsencesApprenants, setShowModalAbsencesApprenants] = useState(false); // Modal absences apprenants
+    const [showModalAbsencesFormateurs, setShowModalAbsencesFormateurs] = useState(false); // Modal absences formateurs
 
     // États pour la modal Organisation Pédagogique
     const [apprenantSelectionne, setApprenantSelectionne] = useState(null);
@@ -649,7 +650,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             
             const { data: absencesRes, error } = await supabase
                 .from('absences_formateurs')
-                .select('id, formateur_id, date_debut, date_fin, type, statut, creneau')
+                .select('id, formateur_id, date_debut, date_fin, type, statut, creneau, motif')
                 .eq('statut', 'validé');
                 
             if (error) throw error;
@@ -675,7 +676,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
             console.log('🔄 Rechargement complet données...');
             
             const [absencesFormateursRes, absencesApprenantsRes, planningTypesRes] = await Promise.all([
-                supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé'),
+                supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau, motif').eq('statut', 'validé'),
                 supabase.from('absences_apprenants').select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire').eq('statut', 'actif'),
                 supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true)
             ]);
@@ -747,7 +748,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                     supabase.from('users').select('id, prenom, nom, role, date_fin_formation_reelle').eq('role', 'apprenant').eq('archive', false),
                     supabase.from('lieux').select('id, nom, couleur, initiale').eq('archive', false),
                     supabase.from('planning_type_formateurs').select('id, formateur_id, jour, creneau, statut, lieu_id, valide').eq('valide', true),
-                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau').eq('statut', 'validé'),
+                    supabase.from('absences_formateurs').select('id, formateur_id, date_debut, date_fin, type, statut, creneau, motif').eq('statut', 'validé'),
                     supabase.from('absences_apprenants').select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire').eq('statut', 'actif')
                 ]);
 
@@ -2751,11 +2752,29 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         </>
                     )}
 
-                    {/* Bouton Absences Apprenants - à droite */}
+                    {/* Boutons Absences - à droite */}
+                    <button
+                        onClick={() => setShowModalAbsencesFormateurs(true)}
+                        style={{
+                            marginLeft: 'auto',
+                            padding: '6px 12px',
+                            backgroundColor: '#f97316',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }}
+                    >
+                        🚫 Absences Formateurs
+                    </button>
                     <button
                         onClick={() => setShowModalAbsencesApprenants(true)}
                         style={{
-                            marginLeft: 'auto',
                             padding: '6px 12px',
                             backgroundColor: '#ef4444',
                             color: 'white',
@@ -4407,6 +4426,198 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                         }}>
                             <button
                                 onClick={() => setShowModalAbsencesApprenants(false)}
+                                style={{
+                                    padding: '8px 20px',
+                                    backgroundColor: '#6b7280',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Fermer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Absences Formateurs de la semaine */}
+            {showModalAbsencesFormateurs && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        padding: '24px',
+                        maxWidth: '700px',
+                        width: '90%',
+                        maxHeight: '80vh',
+                        overflow: 'auto',
+                        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                            borderBottom: '2px solid #f97316',
+                            paddingBottom: '12px'
+                        }}>
+                            <h2 style={{ margin: 0, color: '#f97316', fontSize: '18px' }}>
+                                🚫 Absences Formateurs - Semaine {semaine}
+                            </h2>
+                            <button
+                                onClick={() => setShowModalAbsencesFormateurs(false)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '24px',
+                                    cursor: 'pointer',
+                                    color: '#6b7280'
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {(() => {
+                            // Filtrer les absences de cette semaine
+                            const weekStart = new Date(currentDate);
+                            weekStart.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                            const weekEnd = new Date(weekStart);
+                            weekEnd.setDate(weekStart.getDate() + 4);
+
+                            const formatDate = (d) => d.toISOString().split('T')[0];
+                            const weekStartStr = formatDate(weekStart);
+                            const weekEndStr = formatDate(weekEnd);
+
+                            // Filtrer les absences formateurs (pas les dispo_except)
+                            const absencesSemaine = absencesValidees.filter(abs => {
+                                // Exclure les disponibilités exceptionnelles
+                                if (abs.type === 'dispo_except') return false;
+
+                                // Vérifier que l'absence concerne cette semaine
+                                return abs.date_debut <= weekEndStr && abs.date_fin >= weekStartStr;
+                            });
+
+                            if (absencesSemaine.length === 0) {
+                                return (
+                                    <div style={{
+                                        padding: '40px',
+                                        textAlign: 'center',
+                                        color: '#10b981'
+                                    }}>
+                                        <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+                                        <p style={{ fontSize: '16px', fontWeight: '500' }}>
+                                            Aucune absence formateur cette semaine
+                                        </p>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {absencesSemaine.map(abs => {
+                                        const formateur = formateurs.find(f => f.id === abs.formateur_id);
+                                        const nomFormateur = formateur
+                                            ? `${formateur.prenom} ${formateur.nom}`
+                                            : 'Formateur inconnu';
+
+                                        const debut = new Date(abs.date_debut).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                        const fin = new Date(abs.date_fin).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                                        let dateAffichage = abs.date_debut === abs.date_fin
+                                            ? debut
+                                            : `${debut} → ${fin}`;
+
+                                        if (abs.creneau) {
+                                            dateAffichage += ` (${abs.creneau === 'matin' ? 'Matin' : 'Après-midi'})`;
+                                        }
+
+                                        const typeLabel = abs.type === 'absent' ? 'Absence'
+                                            : abs.type === 'conge' ? 'Congé'
+                                            : abs.type === 'formation' ? 'Formation'
+                                            : abs.type === 'maladie' ? 'Maladie'
+                                            : abs.type;
+
+                                        return (
+                                            <div
+                                                key={abs.id}
+                                                style={{
+                                                    padding: '12px 16px',
+                                                    backgroundColor: '#fff7ed',
+                                                    borderLeft: '4px solid #f97316',
+                                                    borderRadius: '6px'
+                                                }}
+                                            >
+                                                <div style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'flex-start',
+                                                    marginBottom: '6px'
+                                                }}>
+                                                    <span style={{
+                                                        fontWeight: '600',
+                                                        color: '#1f2937',
+                                                        fontSize: '14px'
+                                                    }}>
+                                                        {nomFormateur}
+                                                    </span>
+                                                    <span style={{
+                                                        fontSize: '11px',
+                                                        padding: '2px 8px',
+                                                        backgroundColor: 'white',
+                                                        borderRadius: '4px',
+                                                        color: '#6b7280'
+                                                    }}>
+                                                        {typeLabel}
+                                                    </span>
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '13px',
+                                                    color: '#4b5563',
+                                                    marginBottom: abs.motif ? '6px' : '0'
+                                                }}>
+                                                    📅 {dateAffichage}
+                                                </div>
+                                                {abs.motif && (
+                                                    <div style={{
+                                                        fontSize: '12px',
+                                                        color: '#6b7280',
+                                                        fontStyle: 'italic',
+                                                        paddingTop: '6px',
+                                                        borderTop: '1px dashed #d1d5db'
+                                                    }}>
+                                                        💬 Motif : {abs.motif}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
+
+                        <div style={{
+                            marginTop: '20px',
+                            paddingTop: '16px',
+                            borderTop: '1px solid #e5e7eb',
+                            display: 'flex',
+                            justifyContent: 'flex-end'
+                        }}>
+                            <button
+                                onClick={() => setShowModalAbsencesFormateurs(false)}
                                 style={{
                                     padding: '8px 20px',
                                     backgroundColor: '#6b7280',
