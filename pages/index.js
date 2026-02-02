@@ -496,12 +496,12 @@ function Dashboard() {
     { title: "Valider Changements", icon: "✅", href: "/valider-changements" },
     { title: "Prise Contrôle Formateur", icon: "🎮", href: "/prise-controle-formateur" },
     { title: "Valider Planning Type", icon: "👨‍🏫", href: "/planning-type-formateurs" },
-    { title: "Planning Type Apprenants", icon: "👨‍🎓", href: "/planning-type-apprenants" }
+    { title: "Planning Type Apprenants", icon: "👨‍🎓", href: "/planning-type-apprenants" },
+    { title: "Absences Apprenants", icon: "🚫", href: "/absence-apprenant" }
   ]
 
 
   const gestionItems = [
-    { title: "Absence Apprenant", icon: "🎓", href: "/absence-apprenant" },
     { title: "Gestion Formateurs", icon: "👨‍🏫", href: "/gestion-formateurs" },
     { title: "Gestion Apprenants", icon: "👨‍🎓", href: "/gestion-apprenants" },
     { title: "Gestion Salariés", icon: "👷‍♂️", href: "/gestion-salaries" },
