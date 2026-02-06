@@ -447,6 +447,15 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     const [showModalAbsencesApprenants, setShowModalAbsencesApprenants] = useState(false); // Modal absences apprenants
     const [showModalAbsencesFormateurs, setShowModalAbsencesFormateurs] = useState(false); // Modal absences formateurs
+    const [showModalFermetures, setShowModalFermetures] = useState(false); // Modal fermetures/jours fériés
+    const [fermetures, setFermetures] = useState([]); // Liste des fermetures chargées
+    const [nouvelleFermeture, setNouvelleFermeture] = useState({
+        date_debut: '',
+        date_fin: '',
+        creneau: '',
+        motif: 'fermeture',
+        description: ''
+    });
 
     // États pour la modal Organisation Pédagogique
     const [apprenantSelectionne, setApprenantSelectionne] = useState(null);
@@ -766,6 +775,11 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         
         fetchData();
     }, []);
+
+    // Charger les fermetures quand l'année change
+    useEffect(() => {
+        loadFermetures();
+    }, [currentDate.getFullYear()]);
 
     // ☆☆☆ EFFET POUR DÉMARRER L'ÉCOUTE ROI AMÉLIORÉE ☆☆☆
     useEffect(() => {
@@ -1911,6 +1925,135 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         }
     };
 
+    // ═══════════════════════════════════════════════════════════════
+    // FONCTIONS FERMETURES / JOURS FÉRIÉS
+    // ═══════════════════════════════════════════════════════════════
+
+    const loadFermetures = async () => {
+        try {
+            const annee = currentDate.getFullYear();
+            const response = await fetch(`/api/admin/jours-fermeture?annee=${annee}`);
+            if (response.ok) {
+                const data = await response.json();
+                setFermetures(data.fermetures || []);
+            }
+        } catch (error) {
+            console.error('Erreur chargement fermetures:', error);
+        }
+    };
+
+    const ajouterFermeture = async () => {
+        if (!nouvelleFermeture.date_debut || !nouvelleFermeture.motif) {
+            alert('Date de début et motif requis');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/jours-fermeture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date_debut: nouvelleFermeture.date_debut,
+                    date_fin: nouvelleFermeture.date_fin || null,
+                    creneau: nouvelleFermeture.creneau || null,
+                    motif: nouvelleFermeture.motif,
+                    description: nouvelleFermeture.description || null
+                })
+            });
+
+            if (response.ok) {
+                setNouvelleFermeture({ date_debut: '', date_fin: '', creneau: '', motif: 'fermeture', description: '' });
+                loadFermetures();
+                setMessage('✅ Fermeture ajoutée');
+                setTimeout(() => setMessage(''), 3000);
+            } else {
+                const err = await response.json();
+                alert(`Erreur: ${err.error}`);
+            }
+        } catch (error) {
+            console.error('Erreur ajout fermeture:', error);
+            alert('Erreur lors de l\'ajout');
+        }
+    };
+
+    const supprimerFermeture = async (id) => {
+        if (!confirm('Supprimer cette fermeture ?')) return;
+
+        try {
+            const response = await fetch(`/api/admin/jours-fermeture?id=${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                loadFermetures();
+                setMessage('✅ Fermeture supprimée');
+                setTimeout(() => setMessage(''), 3000);
+            }
+        } catch (error) {
+            console.error('Erreur suppression fermeture:', error);
+        }
+    };
+
+    const initJoursFeries = async () => {
+        const annee = currentDate.getFullYear();
+        if (!confirm(`Initialiser les jours fériés français pour ${annee} ?`)) return;
+
+        try {
+            const response = await fetch('/api/admin/jours-fermeture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'init_feries', annee })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert(data.message);
+                loadFermetures();
+            }
+        } catch (error) {
+            console.error('Erreur init jours fériés:', error);
+        }
+    };
+
+    // Vérifie si un jour/créneau est fermé
+    const estJourFerme = (dateStr, creneau = null) => {
+        return fermetures.some(f => {
+            const dateDebut = new Date(f.date_debut);
+            const dateFin = f.date_fin ? new Date(f.date_fin) : dateDebut;
+            const dateCheck = new Date(dateStr);
+
+            // Vérifier si la date est dans la plage
+            if (dateCheck < dateDebut || dateCheck > dateFin) return false;
+
+            // Si fermeture sur créneau spécifique
+            if (f.creneau) {
+                const creneauNorm = creneau === 'Matin' ? 'M' : (creneau === 'AM' ? 'AM' : creneau);
+                return f.creneau === creneauNorm;
+            }
+
+            // Fermeture journée entière
+            return true;
+        });
+    };
+
+    // Récupère les infos de fermeture pour un jour
+    const getInfoFermeture = (dateStr, creneau = null) => {
+        return fermetures.find(f => {
+            const dateDebut = new Date(f.date_debut);
+            const dateFin = f.date_fin ? new Date(f.date_fin) : dateDebut;
+            const dateCheck = new Date(dateStr);
+
+            if (dateCheck < dateDebut || dateCheck > dateFin) return false;
+
+            if (f.creneau) {
+                const creneauNorm = creneau === 'Matin' ? 'M' : (creneau === 'AM' ? 'AM' : creneau);
+                return f.creneau === creneauNorm;
+            }
+
+            return true;
+        });
+    };
+
     // Charger les associations d'une séance
     const chargerAssociations = async (date, creneau, lieu_id) => {
         try {
@@ -2656,11 +2799,29 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                         </>
                     )}
 
-                    {/* Boutons Absences - à droite */}
+                    {/* Bouton Fermetures et Absences - à droite */}
+                    <button
+                        onClick={() => setShowModalFermetures(true)}
+                        style={{
+                            marginLeft: 'auto',
+                            padding: '6px 12px',
+                            backgroundColor: '#6366f1',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }}
+                    >
+                        🏢 Fermetures
+                    </button>
                     <button
                         onClick={() => setShowModalAbsencesFormateurs(true)}
                         style={{
-                            marginLeft: 'auto',
                             padding: '6px 12px',
                             backgroundColor: '#f97316',
                             color: 'white',
@@ -3018,16 +3179,81 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                                     }}>
                                         {creneau === 'Matin' ? 'M' : 'AM'}
                                     </td>
-                                    {jours.map((jour, dayIndex) => 
-                                        (lieuxParJour[dayIndex] || []).map((lieuIndex) => {
+                                    {jours.map((jour, dayIndex) => {
+                                        // Calculer la date ISO pour ce jour
+                                        const weekDates = getWeekDates(currentDate);
+                                        const dateStr = weekDates[dayIndex];
+                                        const infoFermeture = getInfoFermeture(dateStr, creneau);
+
+                                        return (lieuxParJour[dayIndex] || []).map((lieuIndex) => {
                                             const cellKey = `${dayIndex}-${lieuIndex}-${creneau}`;
+
+                                            // Si jour/créneau fermé, afficher cellule spéciale
+                                            if (infoFermeture) {
+                                                const motifStyles = {
+                                                    ferie: { bg: '#fef2f2', color: '#dc2626', icon: '🎌', label: 'Jour férié' },
+                                                    conges: { bg: '#fefce8', color: '#ca8a04', icon: '🏖️', label: 'Congés' },
+                                                    fermeture: { bg: '#f1f5f9', color: '#475569', icon: '🚫', label: 'Fermé' },
+                                                    formation_formateur: { bg: '#f5f3ff', color: '#7c3aed', icon: '📚', label: 'Formation' },
+                                                    autre: { bg: '#f8fafc', color: '#64748b', icon: '⚠️', label: 'Fermé' }
+                                                };
+                                                const style = motifStyles[infoFermeture.motif] || motifStyles.autre;
+
+                                                return (
+                                                    <td
+                                                        key={cellKey}
+                                                        style={{
+                                                            padding: '8px',
+                                                            border: '1px solid #e5e7eb',
+                                                            backgroundColor: style.bg,
+                                                            color: style.color,
+                                                            verticalAlign: 'middle',
+                                                            textAlign: 'center',
+                                                            minWidth: `${columnWidth}px`,
+                                                            maxWidth: `${columnWidth}px`,
+                                                            width: `${columnWidth}px`
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            height: '100%',
+                                                            gap: '4px'
+                                                        }}>
+                                                            <span style={{ fontSize: '24px' }}>{style.icon}</span>
+                                                            <span style={{
+                                                                fontSize: '11px',
+                                                                fontWeight: '600',
+                                                                textTransform: 'uppercase'
+                                                            }}>
+                                                                {style.label}
+                                                            </span>
+                                                            {infoFermeture.description && (
+                                                                <span style={{
+                                                                    fontSize: '10px',
+                                                                    opacity: 0.8,
+                                                                    maxWidth: '100%',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    {infoFermeture.description}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                );
+                                            }
+
                                             const selectedLieuId = lieuxSelectionnes[cellKey];
                                             const backgroundColor = getLieuCouleur(selectedLieuId);
                                             const textColor = getTextColor(backgroundColor);
-                                            
+
                                             return (
-                                                <td 
-                                                    key={cellKey} 
+                                                <td
+                                                    key={cellKey}
                                                     style={{
                                                         padding: '8px',
                                                         border: '1px solid #e5e7eb',
@@ -3274,8 +3500,8 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                                                     </div>
                                                 </td>
                                             );
-                                        })
-                                    )}
+                                        });
+                                    })}
                                 </tr>
                             ))}
                                 </tbody>
@@ -4353,6 +4579,293 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                                     borderRadius: '6px',
                                     cursor: 'pointer',
                                     fontWeight: '500'
+                                }}
+                            >
+                                Fermer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Fermetures / Jours fériés */}
+            {showModalFermetures && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        padding: '24px',
+                        maxWidth: '800px',
+                        width: '95%',
+                        maxHeight: '85vh',
+                        overflow: 'auto',
+                        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h2 style={{ margin: 0, fontSize: '20px', color: '#6366f1' }}>
+                                🏢 Fermetures & Jours fériés - {currentDate.getFullYear()}
+                            </h2>
+                            <button
+                                onClick={() => setShowModalFermetures(false)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '24px',
+                                    cursor: 'pointer',
+                                    color: '#666'
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {/* Bouton initialiser jours fériés */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <button
+                                onClick={initJoursFeries}
+                                style={{
+                                    padding: '8px 16px',
+                                    backgroundColor: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                🇫🇷 Initialiser jours fériés {currentDate.getFullYear()}
+                            </button>
+                        </div>
+
+                        {/* Formulaire ajout fermeture */}
+                        <div style={{
+                            background: '#f8fafc',
+                            padding: '16px',
+                            borderRadius: '8px',
+                            marginBottom: '20px'
+                        }}>
+                            <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569' }}>
+                                ➕ Ajouter une fermeture
+                            </h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                                <div>
+                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                                        Date début *
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={nouvelleFermeture.date_debut}
+                                        onChange={(e) => setNouvelleFermeture({ ...nouvelleFermeture, date_debut: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '6px',
+                                            fontSize: '13px'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                                        Date fin (optionnel)
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={nouvelleFermeture.date_fin}
+                                        onChange={(e) => setNouvelleFermeture({ ...nouvelleFermeture, date_fin: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '6px',
+                                            fontSize: '13px'
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                                        Créneau
+                                    </label>
+                                    <select
+                                        value={nouvelleFermeture.creneau}
+                                        onChange={(e) => setNouvelleFermeture({ ...nouvelleFermeture, creneau: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '6px',
+                                            fontSize: '13px'
+                                        }}
+                                    >
+                                        <option value="">Journée entière</option>
+                                        <option value="M">Matin uniquement</option>
+                                        <option value="AM">Après-midi uniquement</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                                        Motif *
+                                    </label>
+                                    <select
+                                        value={nouvelleFermeture.motif}
+                                        onChange={(e) => setNouvelleFermeture({ ...nouvelleFermeture, motif: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '6px',
+                                            fontSize: '13px'
+                                        }}
+                                    >
+                                        <option value="fermeture">Fermeture structure</option>
+                                        <option value="conges">Congés</option>
+                                        <option value="ferie">Jour férié</option>
+                                        <option value="formation_formateur">Formation formateurs</option>
+                                        <option value="autre">Autre</option>
+                                    </select>
+                                </div>
+                                <div style={{ gridColumn: 'span 2' }}>
+                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                                        Description
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={nouvelleFermeture.description}
+                                        onChange={(e) => setNouvelleFermeture({ ...nouvelleFermeture, description: e.target.value })}
+                                        placeholder="Ex: Vacances d'été, Formation Excel..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '6px',
+                                            fontSize: '13px'
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={ajouterFermeture}
+                                style={{
+                                    marginTop: '12px',
+                                    padding: '8px 20px',
+                                    backgroundColor: '#6366f1',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                ✓ Ajouter
+                            </button>
+                        </div>
+
+                        {/* Liste des fermetures */}
+                        <div>
+                            <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#475569' }}>
+                                📅 Fermetures {currentDate.getFullYear()} ({fermetures.length})
+                            </h3>
+                            {fermetures.length === 0 ? (
+                                <p style={{ color: '#94a3b8', fontSize: '13px' }}>Aucune fermeture enregistrée</p>
+                            ) : (
+                                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                        <thead>
+                                            <tr style={{ backgroundColor: '#f1f5f9' }}>
+                                                <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>Date(s)</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>Créneau</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>Motif</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>Description</th>
+                                                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {fermetures.map((f) => {
+                                                const motifLabels = {
+                                                    ferie: { label: 'Férié', color: '#dc2626', bg: '#fef2f2' },
+                                                    conges: { label: 'Congés', color: '#f59e0b', bg: '#fffbeb' },
+                                                    fermeture: { label: 'Fermeture', color: '#6366f1', bg: '#eef2ff' },
+                                                    formation_formateur: { label: 'Formation', color: '#8b5cf6', bg: '#f5f3ff' },
+                                                    autre: { label: 'Autre', color: '#64748b', bg: '#f8fafc' }
+                                                };
+                                                const motifInfo = motifLabels[f.motif] || motifLabels.autre;
+
+                                                return (
+                                                    <tr key={f.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                        <td style={{ padding: '8px' }}>
+                                                            {new Date(f.date_debut).toLocaleDateString('fr-FR')}
+                                                            {f.date_fin && f.date_fin !== f.date_debut && (
+                                                                <> → {new Date(f.date_fin).toLocaleDateString('fr-FR')}</>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: '8px' }}>
+                                                            {f.creneau === 'M' ? 'Matin' : f.creneau === 'AM' ? 'Après-midi' : 'Journée'}
+                                                        </td>
+                                                        <td style={{ padding: '8px' }}>
+                                                            <span style={{
+                                                                backgroundColor: motifInfo.bg,
+                                                                color: motifInfo.color,
+                                                                padding: '2px 8px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '12px',
+                                                                fontWeight: '500'
+                                                            }}>
+                                                                {motifInfo.label}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ padding: '8px', color: '#64748b' }}>
+                                                            {f.description || '-'}
+                                                        </td>
+                                                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                                                            <button
+                                                                onClick={() => supprimerFermeture(f.id)}
+                                                                style={{
+                                                                    background: '#fee2e2',
+                                                                    color: '#dc2626',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 8px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '12px'
+                                                                }}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Bouton fermer */}
+                        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                            <button
+                                onClick={() => setShowModalFermetures(false)}
+                                style={{
+                                    padding: '8px 20px',
+                                    backgroundColor: '#64748b',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px'
                                 }}
                             >
                                 Fermer
