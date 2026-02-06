@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
 // RÉACTIVATION PROGRESSIVE - Étape 1
 import MenuApprenants from '../components/MenuApprenants';
-import { isNextWeek, isWeekPlusTwo, genererPlanningDepuisType } from '../lib/planningTypeUtils';
+import { isWeekPlusN, genererPlanningDepuisType } from '../lib/planningTypeUtils';
 
 const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
@@ -1176,11 +1176,16 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                 });
             }
 
-            // ✨ PRÉ-REMPLISSAGE S+1/S+2 : Si semaine suivante ou S+2 et cases vides, compléter depuis planning type
-            const isSPlus1 = isNextWeek(targetDate);
-            const isSPlus2 = isWeekPlusTwo(targetDate);
+            // ✨ PRÉ-REMPLISSAGE S+1 à S+3 : Si semaine future (jusqu'à 3 semaines) et cases vides, compléter depuis planning type
+            let weekOffset = 0;
+            for (let n = 1; n <= 3; n++) {
+                if (isWeekPlusN(targetDate, n)) {
+                    weekOffset = n;
+                    break;
+                }
+            }
 
-            if (isSPlus1 || isSPlus2) {
+            if (weekOffset > 0) {
                 const hasData = Object.values(newFormateursParCase).some(arr => arr.length > 0) ||
                                Object.values(newApprenantsParCase).some(arr => arr.length > 0);
 
@@ -1210,8 +1215,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                             }
                         });
 
-                        const weekLabel = isSPlus1 ? 'S+1' : 'S+2';
-                        setMessage(`Planning pré-rempli depuis planning type (${weekLabel})`);
+                        setMessage(`Planning pré-rempli depuis planning type (S+${weekOffset})`);
                         setTimeout(() => setMessage(''), 4000);
                     }
                 }
@@ -2202,154 +2206,6 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         }
     };
 
-    // FONCTION DE DUPLICATION SEMAINE SUIVANTE (ou S+2)
-    const dupliquerVersProchaineSemaine = async (nbSemaines = 1) => {
-        try {
-            setIsLoading(true);
-            setMessage(`🔄 Duplication vers la semaine S+${nbSemaines}...`);
-
-            // Calculer les dates de la semaine courante et cible
-            const weekDates = getWeekDates(currentDate);
-
-            const prochaineDate = new Date(currentDate);
-            prochaineDate.setDate(currentDate.getDate() + (7 * nbSemaines));
-            const prochainesWeekDates = getWeekDates(prochaineDate);
-
-            const planningsDupliques = [];
-            const planningFormateursDupliques = [];
-            let formateursExclusPourAbsence = 0;
-            let creneauxDupliques = 0;
-
-            // Parcourir tous les créneaux actuels
-            jours.forEach((jour, dayIndex) => {
-                const dateOriginale = weekDates[dayIndex];
-                const dateDestination = prochainesWeekDates[dayIndex];
-                
-                (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
-                    ['Matin', 'AM'].forEach((creneau) => {
-                        const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                        
-                        const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
-                        const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
-                        const lieuId = lieuxSelectionnes[key] || null;
-                        // ✅ FIX: Extraire le premier élément si array, sinon prendre la valeur directement
-                        const salarieValue = salariesSelectionnes[key];
-                        const salarieId = Array.isArray(salarieValue) ? (salarieValue[0] || null) : (salarieValue || null);
-                        
-                        if (formateursIds.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
-                            // Filtrer les formateurs non absents pour la semaine suivante (avec support créneaux)
-                            const formateursDisponibles = formateursIds.filter(formateurId => {
-                                const estAbsent = isFormateurAbsent(formateurId, dateDestination, creneau);
-                                if (estAbsent) formateursExclusPourAbsence++;
-                                return !estAbsent;
-                            });
-
-                            // Si au moins un élément subsiste, créer le créneau dupliqué
-                            if (formateursDisponibles.length > 0 || apprenantsIds.length > 0 || lieuId || salarieId) {
-                                let creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
-                                creneauxDupliques++;
-
-                                planningsDupliques.push({
-                                    date: dateDestination,
-                                    jour: jour,
-                                    creneau: creneauDB,
-                                    lieu_index: lieuIndex,
-                                    lieu_id: lieuId,
-                                    salarie_id: salarieId || null,
-                                    formateurs_ids: formateursDisponibles,
-                                    apprenants_ids: apprenantsIds,
-                                    statut_planning: 'brouillon'
-                                });
-
-                                // Ajouter les formateurs disponibles au planning formateurs
-                                formateursDisponibles.forEach(formateurId => {
-                                    const lieuInfo = lieux.find(l => l.id === lieuId);
-                                    
-                                    planningFormateursDupliques.push({
-                                        formateur_id: formateurId,
-                                        date: dateDestination,
-                                        creneau: creneauDB,
-                                        lieu_nom: lieuInfo ? lieuInfo.nom : '',
-                                        lieu_initiales: lieuInfo ? lieuInfo.initiale : '',
-                                        statut: 'brouillon'
-                                    });
-                                });
-                            }
-                        }
-                    });
-                });
-            });
-
-            if (planningsDupliques.length > 0) {
-                // Supprimer les plannings existants pour la semaine suivante
-                const { error: deleteError } = await supabase
-                    .from('planning_hebdomadaire')
-                    .delete()
-                    .in('date', prochainesWeekDates);
-
-                if (deleteError) {
-                    console.error('Erreur suppression planning semaine suivante:', deleteError);
-                    throw deleteError;
-                }
-
-                // Supprimer les plannings formateurs existants pour la semaine suivante
-                const { error: deleteFormateursError } = await supabase
-                    .from('planning_formateurs_hebdo')
-                    .delete()
-                    .in('date', prochainesWeekDates);
-
-                if (deleteFormateursError) {
-                    console.error('Erreur suppression planning formateurs semaine suivante:', deleteFormateursError);
-                    throw deleteFormateursError;
-                }
-
-                // Insérer les nouveaux plannings
-                const { error: insertError } = await supabase
-                    .from('planning_hebdomadaire')
-                    .insert(planningsDupliques);
-
-                if (insertError) {
-                    console.error('Erreur insertion planning dupliqué:', insertError);
-                    throw insertError;
-                }
-
-                // Insérer les plannings formateurs
-                if (planningFormateursDupliques.length > 0) {
-                    const { error: insertFormateursError } = await supabase
-                        .from('planning_formateurs_hebdo')
-                        .insert(planningFormateursDupliques);
-
-                    if (insertFormateursError) {
-                        console.error('Erreur insertion planning formateurs dupliqué:', insertFormateursError);
-                        throw insertFormateursError;
-                    }
-                }
-
-                const semaineSuivante = Math.ceil(((prochaineDate - new Date(prochaineDate.getFullYear(), 0, 1)) / 86400000 + new Date(prochaineDate.getFullYear(), 0, 1).getDay() + 1) / 7);
-                
-                setMessage(`✅ Planning dupliqué vers semaine ${semaineSuivante} (S+${nbSemaines}) !
-${creneauxDupliques} créneaux dupliqués
-${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affectations formateurs exclues (absences)` : '🎯 Toutes les affectations ont été dupliquées'}`);
-                
-                setTimeout(() => setMessage(''), 6000);
-
-                // Optionnel : naviguer vers la semaine suivante
-                // setCurrentDate(prochaineLundi);
-                
-            } else {
-                setMessage('ℹ️ Aucun créneau à dupliquer trouvé');
-                setTimeout(() => setMessage(''), 3000);
-            }
-
-        } catch (error) {
-            console.error('Erreur lors de la duplication:', error);
-            setMessage(`❌ Erreur duplication: ${error.message}`);
-            setTimeout(() => setMessage(''), 5000);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     // FONCTION DE GÉNÉRATION D'ÉMARGEMENT PDF (HSP ou OPCO selon les apprenants)
     const handleGenerateEmargement = async (seanceData) => {
         try {
@@ -2902,42 +2758,6 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                     </div>
 
                     <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                            onClick={() => dupliquerVersProchaineSemaine(1)}
-                            disabled={isLoading || !canEdit}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#8b5cf6',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
-                            }}
-                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
-                        >
-                            {isLoading ? 'Duplication...' : '📋 Dupliquer S+1'}
-                        </button>
-
-                        <button
-                            onClick={() => dupliquerVersProchaineSemaine(2)}
-                            disabled={isLoading || !canEdit}
-                            style={{
-                                padding: '6px 16px',
-                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#7c3aed',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
-                            }}
-                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : 'Dupliquer vers semaine +2'}
-                        >
-                            {isLoading ? 'Duplication...' : '📋 S+2'}
-                        </button>
-
                         <button
                             onClick={handleEnregistrerBrouillon}
                             disabled={isLoading || !canEdit}
