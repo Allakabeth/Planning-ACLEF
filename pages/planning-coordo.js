@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
 // RÉACTIVATION PROGRESSIVE - Étape 1
 import MenuApprenants from '../components/MenuApprenants';
-import { isNextWeek, genererPlanningDepuisType } from '../lib/planningTypeUtils';
+import { isNextWeek, isWeekPlusTwo, genererPlanningDepuisType } from '../lib/planningTypeUtils';
 
 const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
@@ -1176,8 +1176,11 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                 });
             }
 
-            // ✨ PRÉ-REMPLISSAGE S+1 : Si semaine suivante et cases vides, compléter depuis planning type
-            if (isNextWeek(targetDate)) {
+            // ✨ PRÉ-REMPLISSAGE S+1/S+2 : Si semaine suivante ou S+2 et cases vides, compléter depuis planning type
+            const isSPlus1 = isNextWeek(targetDate);
+            const isSPlus2 = isWeekPlusTwo(targetDate);
+
+            if (isSPlus1 || isSPlus2) {
                 const hasData = Object.values(newFormateursParCase).some(arr => arr.length > 0) ||
                                Object.values(newApprenantsParCase).some(arr => arr.length > 0);
 
@@ -1207,7 +1210,8 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                             }
                         });
 
-                        setMessage('Planning pré-rempli depuis planning type (S+1)');
+                        const weekLabel = isSPlus1 ? 'S+1' : 'S+2';
+                        setMessage(`Planning pré-rempli depuis planning type (${weekLabel})`);
                         setTimeout(() => setMessage(''), 4000);
                     }
                 }
@@ -2198,17 +2202,17 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
         }
     };
 
-    // FONCTION DE DUPLICATION SEMAINE SUIVANTE
-    const dupliquerVersProchaineSemaine = async () => {
+    // FONCTION DE DUPLICATION SEMAINE SUIVANTE (ou S+2)
+    const dupliquerVersProchaineSemaine = async (nbSemaines = 1) => {
         try {
             setIsLoading(true);
-            setMessage('🔄 Duplication vers la semaine suivante...');
+            setMessage(`🔄 Duplication vers la semaine S+${nbSemaines}...`);
 
-            // Calculer les dates de la semaine courante et suivante
+            // Calculer les dates de la semaine courante et cible
             const weekDates = getWeekDates(currentDate);
-            
+
             const prochaineDate = new Date(currentDate);
-            prochaineDate.setDate(currentDate.getDate() + 7);
+            prochaineDate.setDate(currentDate.getDate() + (7 * nbSemaines));
             const prochainesWeekDates = getWeekDates(prochaineDate);
 
             const planningsDupliques = [];
@@ -2323,7 +2327,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
 
                 const semaineSuivante = Math.ceil(((prochaineDate - new Date(prochaineDate.getFullYear(), 0, 1)) / 86400000 + new Date(prochaineDate.getFullYear(), 0, 1).getDay() + 1) / 7);
                 
-                setMessage(`✅ Planning dupliqué vers semaine ${semaineSuivante} !
+                setMessage(`✅ Planning dupliqué vers semaine ${semaineSuivante} (S+${nbSemaines}) !
 ${creneauxDupliques} créneaux dupliqués
 ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affectations formateurs exclues (absences)` : '🎯 Toutes les affectations ont été dupliquées'}`);
                 
@@ -2899,7 +2903,7 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
 
                     <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
                         <button
-                            onClick={dupliquerVersProchaineSemaine}
+                            onClick={() => dupliquerVersProchaineSemaine(1)}
                             disabled={isLoading || !canEdit}
                             style={{
                                 padding: '6px 16px',
@@ -2914,6 +2918,24 @@ ${formateursExclusPourAbsence > 0 ? `⚠️ ${formateursExclusPourAbsence} affec
                             title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : ''}
                         >
                             {isLoading ? 'Duplication...' : '📋 Dupliquer S+1'}
+                        </button>
+
+                        <button
+                            onClick={() => dupliquerVersProchaineSemaine(2)}
+                            disabled={isLoading || !canEdit}
+                            style={{
+                                padding: '6px 16px',
+                                backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#7c3aed',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                fontWeight: '600',
+                                cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
+                            }}
+                            title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : 'Dupliquer vers semaine +2'}
+                        >
+                            {isLoading ? 'Duplication...' : '📋 S+2'}
                         </button>
 
                         <button
