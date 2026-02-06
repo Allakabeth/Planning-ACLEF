@@ -1384,6 +1384,50 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     }, [dataLoaded, absencesApprenants, currentDate]);
     // ═══════════════════════════════════════════════════════════════
 
+    // FONCTION POUR VIDER LE PLANNING D'UNE SEMAINE
+    const viderPlanningSemaine = () => {
+        // Vérifier que c'est une semaine future (au moins S+1)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const lundiSemaine = new Date(currentDate);
+        lundiSemaine.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+        lundiSemaine.setHours(0, 0, 0, 0);
+
+        const lundiActuel = new Date(today);
+        lundiActuel.setDate(today.getDate() - today.getDay() + 1);
+
+        if (lundiSemaine <= lundiActuel) {
+            alert('⚠️ Vous ne pouvez vider que les semaines futures (S+1 et au-delà).');
+            return;
+        }
+
+        // Double confirmation
+        if (!confirm(`⚠️ Vider le planning de la semaine ${semaine} ?\n\nTous les formateurs, apprenants et lieux seront retirés.\nCette action n'est pas enregistrée tant que vous ne cliquez pas sur "Enregistrer".`)) {
+            return;
+        }
+
+        if (!confirm(`🔴 CONFIRMATION FINALE\n\nÊtes-vous vraiment sûr de vouloir vider la semaine ${semaine} ?\n\nCliquez sur OK pour confirmer.`)) {
+            return;
+        }
+
+        // Vider tous les états du planning
+        setFormateursParCase({});
+        setApprenantsParCase({});
+        setLieuxSelectionnes({});
+        setSalariesSelectionnes({});
+
+        // Remettre les lieux par jour à vide (juste l'index 0 par défaut)
+        const lieuxParJourVide = {};
+        for (let i = 0; i < 5; i++) {
+            lieuxParJourVide[i] = [0];
+        }
+        setLieuxParJour(lieuxParJourVide);
+
+        setMessage(`🗑️ Planning de la semaine ${semaine} vidé. Cliquez sur "Enregistrer" pour sauvegarder.`);
+        setTimeout(() => setMessage(''), 6000);
+    };
+
     // FONCTIONS DE SAUVEGARDE
     const handleEnregistrerBrouillon = async () => {
         setIsLoading(true);
@@ -2758,6 +2802,39 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     </div>
 
                     <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
+                        {(() => {
+                            // Afficher le bouton Vider uniquement pour les semaines futures
+                            const today = new Date();
+                            const lundiActuel = new Date(today);
+                            lundiActuel.setDate(today.getDate() - today.getDay() + 1);
+                            lundiActuel.setHours(0, 0, 0, 0);
+
+                            const lundiSemaine = new Date(currentDate);
+                            lundiSemaine.setDate(currentDate.getDate() - currentDate.getDay() + 1);
+                            lundiSemaine.setHours(0, 0, 0, 0);
+
+                            const estSemaineFuture = lundiSemaine > lundiActuel;
+
+                            return estSemaineFuture ? (
+                                <button
+                                    onClick={viderPlanningSemaine}
+                                    disabled={isLoading || !canEdit}
+                                    style={{
+                                        padding: '6px 16px',
+                                        backgroundColor: (isLoading || !canEdit) ? '#94a3b8' : '#dc2626',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        cursor: (isLoading || !canEdit) ? 'not-allowed' : 'pointer'
+                                    }}
+                                    title={!canEdit ? 'Mode consultation - Seul le 1er admin peut modifier' : 'Vider le planning de cette semaine'}
+                                >
+                                    🗑️ Vider
+                                </button>
+                            ) : null;
+                        })()}
                         <button
                             onClick={handleEnregistrerBrouillon}
                             disabled={isLoading || !canEdit}
