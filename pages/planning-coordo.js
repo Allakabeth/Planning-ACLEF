@@ -4470,7 +4470,11 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
 
                             return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {absencesSemaine.map(abs => {
+                                    {absencesSemaine.sort((a, b) => {
+                                        const dateA = a.type === 'absence_periode' ? a.date_debut : a.date_specifique;
+                                        const dateB = b.type === 'absence_periode' ? b.date_debut : b.date_specifique;
+                                        return dateA.localeCompare(dateB);
+                                    }).map(abs => {
                                         const apprenant = apprenants.find(a => a.id === abs.apprenant_id);
                                         const nomApprenant = apprenant
                                             ? `${apprenant.prenom} ${apprenant.nom}`
@@ -4961,7 +4965,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
 
                             return (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {absencesSemaine.map(abs => {
+                                    {absencesSemaine.sort((a, b) => a.date_debut.localeCompare(b.date_debut)).map(abs => {
                                         const formateur = formateurs.find(f => f.id === abs.formateur_id);
                                         const nomFormateur = formateur
                                             ? `${formateur.prenom} ${formateur.nom}`
