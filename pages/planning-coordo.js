@@ -1229,6 +1229,35 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                             }
                         });
 
+                        // Copier les salariés depuis la semaine en cours (S+0)
+                        const currentWeekDates = getWeekDates(new Date());
+                        const { data: currentWeekData } = await supabase
+                            .from('planning_hebdomadaire')
+                            .select('jour, creneau, lieu_id, salaries_ids')
+                            .in('date', currentWeekDates)
+                            .not('salaries_ids', 'is', null);
+
+                        if (currentWeekData && currentWeekData.length > 0) {
+                            currentWeekData.forEach(item => {
+                                if (!item.salaries_ids || item.salaries_ids.length === 0) return;
+                                const dayIndex = jours.indexOf(item.jour);
+                                if (dayIndex === -1) return;
+                                const creneau = item.creneau === 'matin' ? 'Matin' : 'AM';
+
+                                // Trouver la cellule correspondante (même jour + créneau + lieu)
+                                const matchingKey = Object.keys(newLieuxSelectionnes).find(key => {
+                                    const parts = key.split('-');
+                                    return parseInt(parts[0]) === dayIndex
+                                        && parts[2] === creneau
+                                        && newLieuxSelectionnes[key] === item.lieu_id;
+                                });
+
+                                if (matchingKey && (!newSalariesSelectionnes[matchingKey] || newSalariesSelectionnes[matchingKey].length === 0)) {
+                                    newSalariesSelectionnes[matchingKey] = item.salaries_ids.filter(id => id);
+                                }
+                            });
+                        }
+
                         setMessage(`Planning pré-rempli depuis planning type (S+${weekOffset})`);
                         setTimeout(() => setMessage(''), 4000);
                     }
