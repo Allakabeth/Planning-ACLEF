@@ -221,11 +221,18 @@ export default function AbsenceFormateur() {
                     label: 'EXCEPT',
                     nom: 'Dispo exceptionnelle'
                 };
+            case 'remettre_dispo':
+                return {
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    label: 'OK',
+                    nom: 'Remettre disponible'
+                };
             case 'libre':
             default:
-                return { 
-                    backgroundColor: '#d1d5db', 
-                    color: '#374151', 
+                return {
+                    backgroundColor: '#d1d5db',
+                    color: '#374151',
                     label: '',
                     nom: 'Libre'
                 };
@@ -341,6 +348,8 @@ export default function AbsenceFormateur() {
                     typeModification = 'Absence';
                 } else if (statutModifie === 'dispo') {
                     typeModification = 'Disponibilité exceptionnelle';
+                } else if (statutModifie === 'remettre_dispo') {
+                    typeModification = 'Remise en disponible';
                 }
 
                 // ✅ NOUVEAU: Ajouter info créneau
@@ -474,15 +483,15 @@ export default function AbsenceFormateur() {
                 // Si la case a été modifiée
                 if (statutOriginal !== statutModifie) {
                     let type = null;
-                    
+
                     if (statutModifie === 'absent') {
                         type = 'personnel';
                     } else if (statutModifie === 'dispo') {
                         type = 'formation';
                     }
-                    
-                    // Ajouter seulement si c'est un type reconnu
-                    if (type) {
+
+                    // Ajouter si c'est un type reconnu OU remettre_dispo
+                    if (type || statutModifie === 'remettre_dispo') {
                         modificationsDetectees.push({
                             date: dateStr,
                             type: type,
@@ -499,9 +508,34 @@ export default function AbsenceFormateur() {
                 return;
             }
 
-            console.log(`📤 ${modificationsDetectees.length} modifications détectées:`, modificationsDetectees);
+            // Si mode "remettre disponible", supprimer les absences
+            const remettreDispoCount = modificationsDetectees.filter(m => m.type === null && m.statutModifie === 'remettre_dispo').length;
 
-            // ✅ NOUVEAU: Déterminer le créneau
+            if (remettreDispoCount > 0) {
+                for (const modif of modificationsDetectees) {
+                    if (modif.statutModifie === 'remettre_dispo') {
+                        const { error: deleteError } = await supabase
+                            .from('absences_formateurs')
+                            .delete()
+                            .eq('formateur_id', user.id)
+                            .eq('date_debut', modif.date);
+
+                        if (deleteError) {
+                            throw deleteError;
+                        }
+                    }
+                }
+
+                setMessage(`✅ ${remettreDispoCount} date(s) remise(s) en disponible !`);
+
+                // Recharger le planning pour afficher les changements
+                await loadPlanningData();
+                setHistoriqueModi([]);
+                setEnvoiEnCours(false);
+                return;
+            }
+
+            // Déterminer le créneau
             let creneauValue = null; // Par défaut : journée entière
 
             if (creneauMatin && !creneauAM) {
@@ -826,6 +860,27 @@ export default function AbsenceFormateur() {
                             }}
                         >
                             DISPO EXCEPT.
+                        </button>
+                    </div>
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr', gap: '6px', marginBottom: '6px'}}>
+                        <button
+                            onClick={() => {
+                                setModeSelection('remettre_dispo');
+                                setMessage('Mode REMETTRE DISPONIBLE activé');
+                            }}
+                            style={{
+                                padding: '8px',
+                                borderRadius: '8px',
+                                border: modeSelection === 'remettre_dispo' ? '2px solid #fbbf24' : 'none',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                fontSize: '9px',
+                                cursor: 'pointer',
+                                textAlign: 'center'
+                            }}
+                        >
+                            REMETTRE DISPONIBLE
                         </button>
                     </div>
                     <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px'}}>
