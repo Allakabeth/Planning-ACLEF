@@ -1,23 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../lib/supabaseClient';
 import { withAuthAdmin } from '../components/withAuthAdmin';
 
 /**
- * Page de visualisation du planning type
- * Affiche qui DEVRAIT etre present chaque jour/creneau selon les plannings types
- * Les formateurs "sans preference" (lieu_id = NULL) sont places dans le lieu
- * le plus frequent selon l'historique, avec "(SP)" apres leur nom
+ * Page de visualisation du planning type - Version V2
+ * Meme donnees que la V1, mais affichage au format planning coordo :
+ * Colonnes = Jours x Lieux, Lignes = Creneaux (M / AM)
  */
-function VisualisationPlanningType() {
+function VisualisationPlanningTypeV2() {
     const router = useRouter();
     const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
     const creneaux = ['Matin', 'AM'];
-    
+
     // Mapping jour vers numero PostgreSQL (EXTRACT DOW: 1=Lundi, 5=Vendredi)
     const jourVersNum = { 'lundi': 1, 'mardi': 2, 'mercredi': 3, 'jeudi': 4, 'vendredi': 5 };
 
-    // Etats
+    // Etats - copie exacte de la V1
     const [lieux, setLieux] = useState([]);
     const [formateurs, setFormateurs] = useState([]);
     const [apprenants, setApprenants] = useState([]);
@@ -27,7 +26,7 @@ function VisualisationPlanningType() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Charger les donnees au montage
+    // Charger les donnees au montage - copie exacte de la V1
     useEffect(() => {
         loadData();
     }, []);
@@ -36,7 +35,6 @@ function VisualisationPlanningType() {
         try {
             setLoading(true);
 
-            // Charger toutes les donnees en parallele
             const [lieuxRes, formateursRes, apprenantsRes, planningFRes, planningARes, historiqueRes] = await Promise.all([
                 supabase.from('lieux').select('id, nom, initiale, couleur').eq('archive', false).order('nom'),
                 supabase.from('users').select('id, prenom, nom').eq('role', 'formateur').eq('archive', false).order('nom'),
@@ -48,7 +46,6 @@ function VisualisationPlanningType() {
                 supabase.from('planning_apprenants')
                     .select('apprenant_id, jour, creneau, lieu_id')
                     .eq('actif', true),
-                // Historique pour calculer lieu prefere des "sans preference"
                 supabase.from('planning_formateurs_hebdo')
                     .select('formateur_id, date, creneau, lieu_nom')
             ]);
@@ -61,7 +58,6 @@ function VisualisationPlanningType() {
             setLieux(lieuxRes.data || []);
             setFormateurs(formateursRes.data || []);
 
-            // Filtrer les apprenants dont la formation est terminee
             const today = new Date().toISOString().split('T')[0];
             const apprenantsActifs = (apprenantsRes.data || []).filter(a => {
                 if (!a.date_fin_formation_reelle) return true;
@@ -80,29 +76,25 @@ function VisualisationPlanningType() {
         }
     };
 
-    // Calculer le lieu le plus frequent pour un formateur/jour/creneau
+    // Copie exacte de la V1 - Calculer le lieu le plus frequent
     const getLieuPlusFerequent = (formateurId, jourNum, creneau) => {
         const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
-        
-        // Filtrer l'historique pour ce formateur/jour/creneau
+
         const occurrences = {};
         historiqueFormateurs.forEach(h => {
             if (h.formateur_id !== formateurId) return;
             if (!h.lieu_nom || h.lieu_nom === '') return;
-            
-            // Calculer le jour de semaine de la date
+
             const date = new Date(h.date);
-            const jourSemaine = date.getDay(); // 0=Dimanche, 1=Lundi, etc.
-            // Convertir: getDay() retourne 0=Dimanche, mais on veut 1=Lundi
+            const jourSemaine = date.getDay();
             const jourDB = jourSemaine === 0 ? 7 : jourSemaine;
-            
+
             if (jourDB !== jourNum) return;
             if (h.creneau?.toLowerCase() !== creneauDB.toLowerCase() && h.creneau !== creneau) return;
-            
+
             occurrences[h.lieu_nom] = (occurrences[h.lieu_nom] || 0) + 1;
         });
-        
-        // Trouver le lieu avec le plus d'occurrences
+
         let maxLieu = null;
         let maxCount = 0;
         Object.entries(occurrences).forEach(([lieu, count]) => {
@@ -112,21 +104,19 @@ function VisualisationPlanningType() {
             }
         });
 
-        // Si pas d'historique, mettre CCP par defaut
         if (!maxLieu) {
-            maxLieu = 'Centre Camille Pagé';
+            maxLieu = 'Centre Camille Page';
         }
 
         return maxLieu;
     };
 
-    // Obtenir les formateurs pour un jour/creneau/lieu donne
+    // Copie exacte de la V1 - Obtenir les formateurs pour un jour/creneau/lieu
     const getFormateursForCell = (jour, creneau, lieuId, lieuNom) => {
         const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
         const jourNum = jourVersNum[jour.toLowerCase()];
         const result = [];
-        
-        // 1. Formateurs avec ce lieu specifique
+
         planningFormateurs
             .filter(pt =>
                 pt.jour?.toLowerCase() === jour.toLowerCase() &&
@@ -144,7 +134,6 @@ function VisualisationPlanningType() {
                 }
             });
 
-        // 2. Formateurs "sans preference" (lieu_id = NULL) dont le lieu calcule = ce lieu
         planningFormateurs
             .filter(pt =>
                 pt.jour?.toLowerCase() === jour.toLowerCase() &&
@@ -164,11 +153,11 @@ function VisualisationPlanningType() {
                     });
                 }
             });
-        
+
         return result;
     };
 
-    // Obtenir les apprenants pour un jour/creneau/lieu donne
+    // Copie exacte de la V1 - Obtenir les apprenants pour un jour/creneau/lieu
     const getApprenantsForCell = (jour, creneau, lieuId) => {
         const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
         return planningApprenants
@@ -183,6 +172,52 @@ function VisualisationPlanningType() {
             })
             .filter(Boolean);
     };
+
+    // NOUVEAU V2 : Calculer quels lieux sont actifs pour chaque jour
+    const lieuxParJour = useMemo(() => {
+        const result = {};
+
+        jours.forEach((jour, dayIndex) => {
+            const lieuIds = new Set();
+            const jourLower = jour.toLowerCase();
+
+            // Lieux des formateurs (avec lieu explicite)
+            planningFormateurs.forEach(pt => {
+                if (pt.jour?.toLowerCase() === jourLower && pt.lieu_id) {
+                    lieuIds.add(pt.lieu_id);
+                }
+            });
+
+            // Lieux des apprenants
+            planningApprenants.forEach(pt => {
+                if (pt.jour?.toLowerCase() === jourLower && pt.lieu_id) {
+                    lieuIds.add(pt.lieu_id);
+                }
+            });
+
+            // Lieux des formateurs "sans preference" (resolus via historique)
+            const jourNum = jourVersNum[jourLower];
+            planningFormateurs
+                .filter(pt => pt.jour?.toLowerCase() === jourLower && pt.lieu_id === null)
+                .forEach(pt => {
+                    creneaux.forEach(creneau => {
+                        const lieuNom = getLieuPlusFerequent(pt.formateur_id, jourNum, creneau);
+                        if (lieuNom) {
+                            const lieuObj = lieux.find(l => l.nom === lieuNom);
+                            if (lieuObj) {
+                                lieuIds.add(lieuObj.id);
+                            }
+                        }
+                    });
+                });
+
+            // Trier les lieux dans le meme ordre que la liste des lieux
+            const lieuxOrdre = lieux.filter(l => lieuIds.has(l.id));
+            result[dayIndex] = lieuxOrdre;
+        });
+
+        return result;
+    }, [lieux, planningFormateurs, planningApprenants, historiqueFormateurs]);
 
     if (loading) {
         return (
@@ -200,6 +235,10 @@ function VisualisationPlanningType() {
         );
     }
 
+    // Calculer le nombre total de colonnes pour dimensionner
+    const totalColonnes = Object.values(lieuxParJour).reduce((total, lieuxJour) => total + lieuxJour.length, 0);
+    const columnWidth = totalColonnes > 0 ? Math.max(140, Math.floor(1200 / totalColonnes)) : 200;
+
     return (
         <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
             {/* En-tete */}
@@ -212,7 +251,7 @@ function VisualisationPlanningType() {
                 gap: '10px'
             }}>
                 <h1 style={{ margin: 0, color: '#1e40af' }}>
-                    Planning Type - Vue Globale
+                    Planning Type
                 </h1>
                 <button
                     onClick={() => router.push('/planning-coordo')}
@@ -241,110 +280,158 @@ function VisualisationPlanningType() {
                 <p style={{ margin: 0, color: '#0369a1' }}>
                     Cette page affiche le <strong>planning type theorique</strong> : qui devrait etre present chaque jour/creneau selon les plannings types configures.
                     <br />
-                    <strong>(SP)</strong> = Sans Preference - lieu calcule selon l'historique des presences.
+                    <span style={{ display: 'inline-block', background: '#dbeafe', padding: '1px 8px', borderRadius: '3px', marginRight: '4px' }}>Bleu</span> = Disponibilites regulieres
+                    &nbsp;&nbsp;
+                    <span style={{ display: 'inline-block', background: '#fef3c7', padding: '1px 8px', borderRadius: '3px', marginRight: '4px' }}>Jaune</span> = Disponibilites exceptionnelles
+                    <br />
+                    <strong>(SP)</strong> = Sans Preference - lieu calcule selon l&#39;historique des presences.
                     <br />
                     Les absences ne sont PAS prises en compte ici.
                 </p>
             </div>
 
-            {/* Grille du planning */}
-            <div style={{ overflowX: 'auto' }}>
+            {/* Grille du planning - FORMAT COORDO */}
+            <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '15px',
+                overflow: 'auto',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+            }}>
                 <table style={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    fontSize: '12px'
+                    width: totalColonnes === 0 ? 'auto' : '100%',
+                    borderCollapse: 'collapse'
                 }}>
                     <thead>
-                        <tr>
+                        {/* Ligne 1 : Noms des jours */}
+                        <tr style={{ backgroundColor: '#f9fafb' }}>
                             <th style={{
-                                border: '1px solid #d1d5db',
-                                padding: '10px',
-                                background: '#f3f4f6',
-                                minWidth: '80px'
+                                padding: '4px 2px',
+                                border: '1px solid #e5e7eb',
+                                fontWeight: '600',
+                                fontSize: '13px',
+                                textAlign: 'center',
+                                minWidth: '30px',
+                                maxWidth: '30px',
+                                width: '30px'
                             }}>
-                                Jour / Lieu
                             </th>
-                            {jours.map(jour => (
-                                <th
-                                    key={jour}
-                                    colSpan={2}
-                                    style={{
-                                        border: '1px solid #d1d5db',
-                                        padding: '10px',
-                                        background: '#1e40af',
-                                        color: 'white',
-                                        textAlign: 'center'
-                                    }}
-                                >
-                                    {jour}
-                                </th>
-                            ))}
-                        </tr>
-                        <tr>
-                            <th style={{
-                                border: '1px solid #d1d5db',
-                                padding: '8px',
-                                background: '#f3f4f6'
-                            }}>
-                                Creneau
-                            </th>
-                            {jours.map(jour => (
-                                creneaux.map(creneau => (
+                            {jours.map((jour, dayIndex) => {
+                                const lieuxJour = lieuxParJour[dayIndex] || [];
+                                if (lieuxJour.length === 0) return null;
+                                return (
                                     <th
-                                        key={jour + '-' + creneau}
+                                        key={jour}
+                                        colSpan={lieuxJour.length}
                                         style={{
-                                            border: '1px solid #d1d5db',
-                                            padding: '8px',
-                                            background: creneau === 'Matin' ? '#dbeafe' : '#fef3c7',
-                                            minWidth: '150px'
+                                            padding: '10px',
+                                            border: '1px solid #e5e7eb',
+                                            textAlign: 'center',
+                                            fontSize: '13px',
+                                            fontWeight: '600',
+                                            backgroundColor: '#f9fafb'
                                         }}
                                     >
-                                        {creneau}
+                                        {jour}
                                     </th>
-                                ))
-                            ))}
+                                );
+                            })}
+                        </tr>
+                        {/* Ligne 2 : Noms/initiales des lieux avec couleur */}
+                        <tr>
+                            <th style={{
+                                padding: '4px 2px',
+                                border: '1px solid #e5e7eb',
+                                minWidth: '30px',
+                                maxWidth: '30px',
+                                width: '30px',
+                                backgroundColor: '#f9fafb'
+                            }}>
+                            </th>
+                            {jours.map((jour, dayIndex) => {
+                                const lieuxJour = lieuxParJour[dayIndex] || [];
+                                return lieuxJour.map((lieu) => (
+                                    <th
+                                        key={dayIndex + '-' + lieu.id}
+                                        style={{
+                                            padding: '6px 4px',
+                                            border: '1px solid #e5e7eb',
+                                            textAlign: 'center',
+                                            fontSize: '11px',
+                                            fontWeight: 'bold',
+                                            backgroundColor: lieu.couleur || '#f9fafb',
+                                            color: '#000000',
+                                            textShadow: '0 0 3px white, 0 0 3px white',
+                                            minWidth: columnWidth + 'px',
+                                            maxWidth: columnWidth + 'px',
+                                            width: columnWidth + 'px'
+                                        }}
+                                    >
+                                        {lieu.initiale || lieu.nom}
+                                    </th>
+                                ));
+                            })}
                         </tr>
                     </thead>
                     <tbody>
-                        {lieux.map(lieu => (
-                            <tr key={lieu.id}>
+                        {/* Lignes : Matin et AM */}
+                        {creneaux.map((creneau, creneauIndex) => (
+                            <tr key={creneau}>
                                 <td style={{
-                                    border: '1px solid #d1d5db',
-                                    padding: '10px',
-                                    background: lieu.couleur || '#f9fafb',
+                                    padding: '4px 2px',
+                                    border: '1px solid #e5e7eb',
+                                    backgroundColor: creneauIndex === 0 ? '#fef3c7' : '#dbeafe',
                                     fontWeight: 'bold',
-                                    verticalAlign: 'top',
-                                    color: '#000000',
-                                    textShadow: '0 0 2px white'
+                                    textAlign: 'center',
+                                    fontSize: '10px',
+                                    minWidth: '30px',
+                                    maxWidth: '30px',
+                                    width: '30px'
                                 }}>
-                                    {lieu.initiale || lieu.nom}
+                                    {creneau === 'Matin' ? 'M' : 'AM'}
                                 </td>
-                                {jours.map(jour => (
-                                    creneaux.map(creneau => {
-                                        const formateursCell = getFormateursForCell(jour, creneau, lieu.id, lieu.nom);
+                                {jours.map((jour, dayIndex) => {
+                                    const lieuxJour = lieuxParJour[dayIndex] || [];
+                                    return lieuxJour.map((lieu) => {
+                                        const formateursCell = getFormateursForCell(jour, creneau, lieu.id, lieu.nom)
+                                            .sort((a, b) => {
+                                                // Bleu (disponible) d'abord, jaune (dispo_except) ensuite
+                                                if (a.statut === 'disponible' && b.statut !== 'disponible') return -1;
+                                                if (a.statut !== 'disponible' && b.statut === 'disponible') return 1;
+                                                return 0;
+                                            });
                                         const apprenantsCell = getApprenantsForCell(jour, creneau, lieu.id);
                                         const hasContent = formateursCell.length > 0 || apprenantsCell.length > 0;
 
                                         return (
                                             <td
-                                                key={jour + '-' + creneau + '-' + lieu.id}
+                                                key={dayIndex + '-' + lieu.id + '-' + creneau}
                                                 style={{
-                                                    border: '1px solid #d1d5db',
                                                     padding: '8px',
+                                                    border: '1px solid #e5e7eb',
                                                     verticalAlign: 'top',
-                                                    background: hasContent ? '#ffffff' : '#f9fafb'
+                                                    background: hasContent ? '#ffffff' : '#f9fafb',
+                                                    minWidth: columnWidth + 'px',
+                                                    maxWidth: columnWidth + 'px',
+                                                    width: columnWidth + 'px'
                                                 }}
                                             >
                                                 {hasContent ? (
-                                                    <>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                                         {/* Formateurs */}
                                                         {formateursCell.length > 0 && (
-                                                            <div style={{ marginBottom: '8px' }}>
+                                                            <div style={{
+                                                                padding: '6px',
+                                                                background: 'rgba(255, 255, 255, 0.2)',
+                                                                borderRadius: '4px',
+                                                                border: '1px solid rgba(255, 255, 255, 0.3)'
+                                                            }}>
                                                                 <div style={{
                                                                     fontSize: '10px',
-                                                                    fontWeight: 'bold',
-                                                                    color: '#1e40af',
-                                                                    marginBottom: '4px'
+                                                                    fontWeight: '600',
+                                                                    marginBottom: '4px',
+                                                                    textAlign: 'center',
+                                                                    color: '#1e40af'
                                                                 }}>
                                                                     FORMATEURS
                                                                 </div>
@@ -370,9 +457,10 @@ function VisualisationPlanningType() {
                                                             <div>
                                                                 <div style={{
                                                                     fontSize: '10px',
-                                                                    fontWeight: 'bold',
-                                                                    color: '#059669',
-                                                                    marginBottom: '4px'
+                                                                    fontWeight: '600',
+                                                                    marginBottom: '4px',
+                                                                    textAlign: 'center',
+                                                                    color: '#059669'
                                                                 }}>
                                                                     APPRENANTS
                                                                 </div>
@@ -392,7 +480,7 @@ function VisualisationPlanningType() {
                                                                 ))}
                                                             </div>
                                                         )}
-                                                    </>
+                                                    </div>
                                                 ) : (
                                                     <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>
                                                         -
@@ -400,15 +488,15 @@ function VisualisationPlanningType() {
                                                 )}
                                             </td>
                                         );
-                                    })
-                                ))}
+                                    });
+                                })}
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
 
-            {/* Statistiques */}
+            {/* Statistiques - copie exacte de la V1 */}
             <div style={{
                 marginTop: '20px',
                 padding: '15px',
@@ -438,4 +526,4 @@ function VisualisationPlanningType() {
     );
 }
 
-export default withAuthAdmin(VisualisationPlanningType);
+export default withAuthAdmin(VisualisationPlanningTypeV2);

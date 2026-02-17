@@ -2703,7 +2703,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             Accueil
                         </button>
                         <button
-                            onClick={() => router.push('/visualisation-planning-type')}
+                            onClick={() => router.push('/visualisation-planning-type-v2')}
                             style={{
                                 padding: '8px 16px',
                                 background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
