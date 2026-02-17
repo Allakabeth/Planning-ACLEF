@@ -1037,6 +1037,22 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
             flexShrink: 0
           }}>
             Messages récents ({messagesFiltres.length})
+            {(compteurs.validation_planning_a_traiter + compteurs.validation_modif_a_traiter > 0) && (
+              <>
+                <style>{`@keyframes clignote-triangle { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
+                <span
+                  style={{
+                    marginLeft: '8px',
+                    color: '#dc2626',
+                    fontSize: '14px',
+                    animation: 'clignote-triangle 1s ease-in-out infinite'
+                  }}
+                  title={`${compteurs.validation_planning_a_traiter + compteurs.validation_modif_a_traiter} message(s) à traiter`}
+                >
+                  ▲
+                </span>
+              </>
+            )}
           </h3>
           
           <div style={{

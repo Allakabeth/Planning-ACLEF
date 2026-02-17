@@ -10,6 +10,7 @@ export default function MonPlanningHebdo() {
     const [planningCoordo, setPlanningCoordo] = useState([])
     const [planningFinal, setPlanningFinal] = useState([])
     const [lieux, setLieux] = useState([])
+    const [fermetures, setFermetures] = useState([])
     const [currentWeek, setCurrentWeek] = useState(new Date())
     const [isLoading, setIsLoading] = useState(true)
     const [message, setMessage] = useState('')
@@ -379,6 +380,18 @@ export default function MonPlanningHebdo() {
 
             setPlanningCoordo(planningCoordoFormateur)
             console.log('👨‍💼 Planning coordo chargé:', planningCoordoFormateur?.length || 0, 'affectations')
+
+            // Charger les fermetures de la structure
+            const { data: fermeturesData, error: fermeturesError } = await supabase
+                .from('jours_fermeture')
+                .select('*')
+                .lte('date_debut', endDate)
+                .or(`date_fin.gte.${startDate},date_fin.is.null`)
+
+            if (!fermeturesError) {
+                setFermetures(fermeturesData || [])
+                console.log('🏢 Fermetures chargées:', fermeturesData?.length || 0)
+            }
 
             // 4. ARBITRAGE : Construire le planning final avec priorités
             const planningArbitre = construirePlanningArbitre(
