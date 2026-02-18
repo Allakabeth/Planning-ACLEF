@@ -12,6 +12,7 @@ export default function AbsenceFormateur() {
     const [historiqueModi, setHistoriqueModi] = useState([]);
     const [message, setMessage] = useState('');
     const [lieux, setLieux] = useState([]);
+    const [fermetures, setFermetures] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [envoiEnCours, setEnvoiEnCours] = useState(false);
     // ✅ NOUVEAU: États pour modal message facultatif
@@ -158,6 +159,31 @@ export default function AbsenceFormateur() {
                 console.log(`✅ Modifications affichées: ${absencesData.length} (en_attente + validées)`);
             }
 
+            // Charger les fermetures de la structure pour ce mois
+            const premierJourStr = `${annee}-${String(mois + 1).padStart(2, '0')}-01`;
+            const dernierJourStr = `${annee}-${String(mois + 1).padStart(2, '0')}-${String(dernierJour.getDate()).padStart(2, '0')}`;
+            const { data: fermeturesData } = await supabase
+                .from('jours_fermeture')
+                .select('*')
+                .lte('date_debut', dernierJourStr)
+                .or(`date_fin.gte.${premierJourStr},date_fin.is.null`);
+
+            setFermetures(fermeturesData || []);
+
+            // Marquer les jours fermes (priorite sur tout sauf absences deja posees)
+            if (fermeturesData) {
+                for (const dateStr of Object.keys(planning)) {
+                    if (planning[dateStr] === 'absent' || planning[dateStr] === 'dispo') continue;
+                    const fermeture = fermeturesData.find(f => {
+                        const fin = f.date_fin || f.date_debut;
+                        return dateStr >= f.date_debut && dateStr <= fin;
+                    });
+                    if (fermeture) {
+                        planning[dateStr] = 'fermeture';
+                    }
+                }
+            }
+
             // Debug : Afficher le résultat final
             const joursVerts = Object.keys(planning).filter(d => planning[d] === 'planning_type').length;
             const joursRouges = Object.keys(planning).filter(d => planning[d] === 'absent').length;
@@ -193,10 +219,17 @@ export default function AbsenceFormateur() {
     // Fonction pour obtenir les détails d'un statut
     const getStatutDetails = (statut) => {
         switch (statut) {
+            case 'fermeture':
+                return {
+                    backgroundColor: '#94a3b8',
+                    color: 'white',
+                    label: 'FERMÉ',
+                    nom: 'Structure fermée'
+                };
             case 'absent':
-                return { 
-                    backgroundColor: '#ef4444', 
-                    color: 'white', 
+                return {
+                    backgroundColor: '#ef4444',
+                    color: 'white',
                     label: 'ABS',
                     nom: 'Absent'
                 };
@@ -251,6 +284,19 @@ export default function AbsenceFormateur() {
         
         if (dateStr < aujourdhuiStr) {
             setMessage('Impossible de modifier le passé');
+            return;
+        }
+
+        // Bloquer si jour ferme
+        if (planningModifie[dateStr] === 'fermeture') {
+            const fermeture = fermetures.find(f => {
+                const fin = f.date_fin || f.date_debut;
+                return dateStr >= f.date_debut && dateStr <= fin;
+            });
+            const motifLabels = { ferie: 'Jour férié', conges: 'Congés', fermeture: 'Structure fermée', formation_formateur: 'Formation', autre: 'Fermé' };
+            const motifLabel = fermeture ? (motifLabels[fermeture.motif] || 'Fermé') : 'Fermé';
+            const desc = fermeture?.description ? ` (${fermeture.description})` : '';
+            setMessage(`${motifLabel}${desc} - Modification impossible`);
             return;
         }
 
@@ -1241,6 +1287,10 @@ export default function AbsenceFormateur() {
                         <div style={{display: 'flex', alignItems: 'center'}}>
                             <div style={{width: '8px', height: '8px', backgroundColor: '#d1d5db', borderRadius: '2px', marginRight: '4px'}}></div>
                             <span style={{color: '#374151'}}>Libre</span>
+                        </div>
+                        <div style={{display: 'flex', alignItems: 'center'}}>
+                            <div style={{width: '8px', height: '8px', backgroundColor: '#94a3b8', borderRadius: '2px', marginRight: '4px'}}></div>
+                            <span style={{color: '#374151'}}>Fermé / Férié</span>
                         </div>
                     </div>
                 </div>
