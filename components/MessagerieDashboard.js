@@ -1042,9 +1042,11 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                 <style>{`@keyframes clignote-triangle { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
                 <span
                   style={{
-                    marginLeft: '8px',
+                    marginLeft: '10px',
                     color: '#dc2626',
-                    fontSize: '14px',
+                    fontSize: '28px',
+                    lineHeight: '1',
+                    verticalAlign: 'middle',
                     animation: 'clignote-triangle 1s ease-in-out infinite'
                   }}
                   title={`${compteurs.validation_planning_a_traiter + compteurs.validation_modif_a_traiter} message(s) à traiter`}
