@@ -427,9 +427,26 @@ export default function AbsenceFormateur() {
 
             const formateurNom = `${user.prenom} ${user.nom}`
             const listeModifications = genererListeModifications()
-            
+
             console.log('📝 Liste modifications:', listeModifications)
-            
+
+            // Déterminer l'objet du message selon le type de modification
+            const hasRemiseDispo = Object.keys(planningModifie).some(dateStr =>
+                planningModifie[dateStr] === 'remettre_dispo' && planningOriginal[dateStr] !== 'remettre_dispo'
+            );
+            const hasAbsence = Object.keys(planningModifie).some(dateStr =>
+                (planningModifie[dateStr] === 'absent' || planningModifie[dateStr] === 'dispo') && planningOriginal[dateStr] !== planningModifie[dateStr]
+            );
+
+            let objetMessage;
+            if (hasRemiseDispo && !hasAbsence) {
+                objetMessage = 'Annulation d\'absence - Retour disponible';
+            } else if (hasRemiseDispo && hasAbsence) {
+                objetMessage = 'Modification ponctuelle et annulation d\'absence';
+            } else {
+                objetMessage = 'Validation de modification ponctuelle';
+            }
+
             let contenu = `${formateurNom} souhaite effectuer des modifications ponctuelles sur son planning :\n\n`
             
             // Ajouter la liste des modifications
@@ -453,7 +470,7 @@ export default function AbsenceFormateur() {
                 destinataire_id: null, // null = admin
                 expediteur: formateurNom,
                 destinataire: 'Coordination ACLEF',
-                objet: 'Validation de modification ponctuelle',
+                objet: objetMessage,
                 contenu: contenu,
                 type: 'planning',
                 lu: false,
