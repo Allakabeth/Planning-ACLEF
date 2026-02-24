@@ -173,6 +173,48 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
     }
   }
 
+  const terminerParcours = async (message) => {
+    if (!message.apprenant_concerne_id) {
+      alert('Erreur : aucun apprenant associe a ce message')
+      return
+    }
+
+    if (!confirm('Confirmer la fin du parcours de cet apprenant ?\n\nCela va :\n- Passer son statut a "termine"\n- Desactiver tous ses creneaux de planning')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/terminer-parcours', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apprenant_id: message.apprenant_concerne_id })
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Erreur inconnue')
+      }
+
+      // Archiver le message automatiquement
+      await supabase
+        .from('messages')
+        .update({
+          archive: true,
+          statut_validation: 'traite',
+          date_archivage: new Date().toISOString().split('T')[0]
+        })
+        .eq('id', message.id)
+
+      alert('Parcours termine avec succes ! Le message a ete archive.')
+      chargerDonnees()
+      setSelectedMessage(null)
+
+    } catch (error) {
+      alert('Erreur : ' + error.message)
+    }
+  }
+
   const supprimerMessage = async (messageId) => {
     if (!confirm('⚠️ Êtes-vous sûr de vouloir supprimer définitivement ce message ?\n\nCette action est irréversible.')) {
       return
@@ -532,6 +574,7 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   // ✅ NOUVEAU: Fonction pour obtenir la couleur selon les semaines restantes
   const getCouleurFinFormation = (semaines) => {
     switch (semaines) {
+      case 0: return { bg: '#7f1d1d', text: 'white', label: 'DEPASSE' } // Rouge fonce - parcours termine
       case 4: return { bg: '#22c55e', text: 'white', label: '4 SEM' } // Vert
       case 3: return { bg: '#eab308', text: 'white', label: '3 SEM' } // Jaune
       case 2: return { bg: '#f97316', text: 'white', label: '2 SEM' } // Orange
@@ -1085,6 +1128,7 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                     backgroundColor: selectedMessage?.id === message.id ? '#eff6ff' :
                                    message.archive ? '#fef3c7' :
                                    message.type === 'fin_formation' ? (
+                                     message.semaines_restantes === 0 ? '#fecaca' :
                                      message.semaines_restantes === 4 ? '#dcfce7' :
                                      message.semaines_restantes === 3 ? '#fef9c3' :
                                      message.semaines_restantes === 2 ? '#ffedd5' :
@@ -1100,6 +1144,7 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                     border: `1px solid ${selectedMessage?.id === message.id ? '#3b82f6' :
                                         message.archive ? '#f59e0b' :
                                         message.type === 'fin_formation' ? (
+                                          message.semaines_restantes === 0 ? '#7f1d1d' :
                                           message.semaines_restantes === 4 ? '#22c55e' :
                                           message.semaines_restantes === 3 ? '#eab308' :
                                           message.semaines_restantes === 2 ? '#f97316' :
@@ -1182,6 +1227,44 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                 {/* Actions selon l'état avec bouton Valider */}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
                   
+                  {/* Boutons pour parcours termine mais toujours actif */}
+                  {selectedMessage.type === 'fin_formation' && selectedMessage.semaines_restantes === 0 && !selectedMessage.archive && selectedMessage.statut_validation !== 'traite' && (
+                    <>
+                      <button
+                        onClick={() => terminerParcours(selectedMessage)}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          boxShadow: '0 4px 12px rgba(127, 29, 29, 0.3)'
+                        }}
+                      >
+                        Terminer le parcours
+                      </button>
+                      <button
+                        onClick={() => router.push('/gestion-apprenants')}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                        }}
+                      >
+                        Modifier le parcours
+                      </button>
+                    </>
+                  )}
+
                   {/* Bouton Valider pour demandes planning type */}
                   {estDemandeValidationPlanningType(selectedMessage) && (
                     <button

@@ -73,7 +73,9 @@ export default async function handler(req, res) {
 
       // Déterminer le nombre de semaines
       let semaines = null
-      if (diffJours >= 0 && diffJours <= 7) {
+      if (diffJours < 0) {
+        semaines = 0  // Parcours dépassé, toujours actif
+      } else if (diffJours >= 0 && diffJours <= 7) {
         semaines = 1
       } else if (diffJours > 7 && diffJours <= 14) {
         semaines = 2
@@ -83,7 +85,7 @@ export default async function handler(req, res) {
         semaines = 4
       }
 
-      if (semaines) {
+      if (semaines !== null) {
         const cle = `${apprenant.id}_${semaines}_${apprenant.date_sortie_previsionnelle}`
 
         // Vérifier si déjà notifié
@@ -139,10 +141,24 @@ export default async function handler(req, res) {
             ? new Date(notif.apprenant.date_entree_formation).toLocaleDateString('fr-FR')
             : 'Non renseignée'
 
-          // Créer le message
-          const objet = `[Alerte] Fin de formation dans ${notif.semaines} semaine${notif.semaines > 1 ? 's' : ''} - ${notif.apprenant.prenom} ${notif.apprenant.nom}`
+          // Créer le message (adapter selon parcours dépassé ou non)
+          const objet = notif.semaines === 0
+            ? `[Action requise] Parcours termine - ${notif.apprenant.prenom} ${notif.apprenant.nom} toujours actif`
+            : `[Alerte] Fin de formation dans ${notif.semaines} semaine${notif.semaines > 1 ? 's' : ''} - ${notif.apprenant.prenom} ${notif.apprenant.nom}`
 
-          const contenu = `📅 Fin de formation prévue : ${dateFinFormatee}
+          const joursDepasses = Math.abs(notif.diffJours)
+
+          const contenu = notif.semaines === 0
+            ? `🚨 Parcours termine depuis ${joursDepasses} jour${joursDepasses > 1 ? 's' : ''} mais apprenant toujours actif
+
+👤 Apprenant : ${notif.apprenant.prenom} ${notif.apprenant.nom}
+📅 Fin de formation prevue : ${dateFinFormatee}
+📋 Dispositif : ${notif.apprenant.dispositif || 'Non renseigne'}
+📍 Lieu de formation : ${notif.apprenant.lieu_formation?.nom || 'Non defini'}
+📆 Date d'entree : ${dateEntreeFormatee}
+
+⚠️ Action requise : terminer le parcours ou modifier les dates.`
+            : `📅 Fin de formation prévue : ${dateFinFormatee}
 
 👤 Apprenant : ${notif.apprenant.prenom} ${notif.apprenant.nom}
 📋 Dispositif : ${notif.apprenant.dispositif || 'Non renseigné'}
