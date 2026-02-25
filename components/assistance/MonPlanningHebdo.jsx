@@ -11,6 +11,7 @@ export default function MonPlanningHebdo({
     const [planningCoordo, setPlanningCoordo] = useState([])
     const [planningFinal, setPlanningFinal] = useState([])
     const [lieux, setLieux] = useState([])
+    const [fermetures, setFermetures] = useState([])
     const [currentWeek, setCurrentWeek] = useState(new Date())
     const [isLoading, setIsLoading] = useState(true)
 
@@ -115,14 +116,25 @@ export default function MonPlanningHebdo({
             })
 
             setPlanningCoordo(planningCoordoFormateur)
-            console.log('👨‍💼 Planning coordo chargé:', planningCoordoFormateur?.length || 0, 'affectations')
 
-            // 4. ARBITRAGE : Construire le planning final avec priorités
+            // 4. Charger les fermetures de la structure
+            const { data: fermeturesData, error: fermeturesError } = await supabase
+                .from('jours_fermeture')
+                .select('*')
+                .lte('date_debut', endDate)
+                .or(`date_fin.gte.${startDate},date_fin.is.null`)
+
+            if (!fermeturesError) {
+                setFermetures(fermeturesData || [])
+            }
+
+            // 5. ARBITRAGE : Construire le planning final avec priorités
             const planningArbitre = construirePlanningArbitre(
-                planningTypeData || [], 
-                absencesData || [], 
-                planningCoordoFormateur || [], 
-                weekDates
+                planningTypeData || [],
+                absencesData || [],
+                planningCoordoFormateur || [],
+                weekDates,
+                fermeturesData || []
             )
             
             setPlanningFinal(planningArbitre)
@@ -136,8 +148,19 @@ export default function MonPlanningHebdo({
         }
     }
 
+    // Vérifier si une date/créneau est concerné par une fermeture
+    const getInfoFermetureHebdo = (dateStr, creneauDB, fermeturesList) => {
+        return fermeturesList.find(f => {
+            const debut = f.date_debut
+            const fin = f.date_fin || f.date_debut
+            if (dateStr < debut || dateStr > fin) return false
+            if (f.creneau && f.creneau !== creneauDB) return false
+            return true
+        })
+    }
+
     // Fonction d'arbitrage - LOGIQUE DE PRIORITÉ PROFESSIONNELLE
-    const construirePlanningArbitre = (planningType, absences, planningCoordo, weekDates) => {
+    const construirePlanningArbitre = (planningType, absences, planningCoordo, weekDates, fermeturesList) => {
         const planningFinal = []
 
         console.log('🎯 DÉBUT ARBITRAGE - LOGIQUE DE PRIORITÉ PROFESSIONNELLE')
@@ -150,10 +173,25 @@ export default function MonPlanningHebdo({
                 // Vérifier d'abord les absences validées pour ce jour
                 const dateJour = weekDates[jours.indexOf(jour)]
                 const dateString = dateJour.toISOString().split('T')[0]
-                
-                console.log(`📅 Date recherchée: ${dateString}`)
-                
-                // ✅ NOUVEAU: Vérifier absence avec support des créneaux M/AM
+
+                // ÉTAT 0 - FERMETURE (priorité maximale)
+                const creneauDB = creneau === 'Matin' ? 'M' : 'AM'
+                const infoFermeture = getInfoFermetureHebdo(dateString, creneauDB, fermeturesList || [])
+                if (infoFermeture) {
+                    planningFinal.push({
+                        jour,
+                        creneau,
+                        lieu_id: null,
+                        statut: 'fermeture',
+                        source: 'jours_fermeture',
+                        priorite: 0,
+                        motif_fermeture: infoFermeture.motif,
+                        description_fermeture: infoFermeture.description
+                    })
+                    continue
+                }
+
+                // Vérifier absence avec support des créneaux M/AM
                 const absenceJour = absences.find(abs => {
                     const debut = new Date(abs.date_debut)
                     const fin = new Date(abs.date_fin)
@@ -286,6 +324,9 @@ export default function MonPlanningHebdo({
     // FONCTION LABELS SELON LOGIQUE PROFESSIONNELLE
     const getStatutLabel = (creneau) => {
         switch (creneau.statut) {
+            case 'fermeture':
+                const labels = { ferie: 'FERIE', conges: 'CONGES', fermeture: 'FERME', formation_formateur: 'FORMATION', autre: 'FERME' }
+                return labels[creneau.motif_fermeture] || 'FERME'
             case 'dispo_except':
                 return 'EXCEPT'
             case 'affecte_coordo':
@@ -302,6 +343,9 @@ export default function MonPlanningHebdo({
     // FONCTION COULEURS SELON LOGIQUE PROFESSIONNELLE
     const getStatutColor = (creneau) => {
         switch (creneau.statut) {
+            case 'fermeture':
+                const bgColors = { ferie: '#fef2f2', conges: '#fefce8', fermeture: '#f1f5f9', formation_formateur: '#f5f3ff', autre: '#f1f5f9' }
+                return bgColors[creneau.motif_fermeture] || '#f1f5f9'
             case 'dispo_except':
                 return '#fbbf24' // JAUNE pour disponibilité exceptionnelle
             case 'affecte_coordo':
@@ -318,6 +362,9 @@ export default function MonPlanningHebdo({
     // FONCTION BORDURE SELON LOGIQUE PROFESSIONNELLE
     const getBorderColor = (creneau) => {
         switch (creneau.statut) {
+            case 'fermeture':
+                const borderColors = { ferie: '#dc2626', conges: '#ca8a04', fermeture: '#475569', formation_formateur: '#7c3aed', autre: '#475569' }
+                return borderColors[creneau.motif_fermeture] || '#475569'
             case 'dispo_except':
                 return '#fbbf24' // Jaune pour exceptionnelle
             case 'affecte_coordo':
@@ -596,8 +643,9 @@ export default function MonPlanningHebdo({
                                                         minHeight: '50px',
                                                         backgroundColor: creneauInfo ? 
                                                             getStatutColor(creneauInfo) : '#f3f4f6',
-                                                        color: creneauInfo ? 
-                                                            (creneauInfo.statut === 'disponible_non_choisi' ? '#374151' : 
+                                                        color: creneauInfo ?
+                                                            (creneauInfo.statut === 'fermeture' ? getBorderColor(creneauInfo) :
+                                                             creneauInfo.statut === 'disponible_non_choisi' ? '#374151' :
                                                              creneauInfo.statut === 'dispo_except' ? '#92400e' : 'white') : '#d1d5db',
                                                         borderRadius: '8px',
                                                         display: 'flex',
@@ -610,7 +658,17 @@ export default function MonPlanningHebdo({
                                                         position: 'relative'
                                                     }}>
                                                         {creneauInfo ? (
-                                                            creneauInfo.statut === 'absent' ? (
+                                                            creneauInfo.statut === 'fermeture' ? (
+                                                                <div style={{
+                                                                    fontSize: '8px',
+                                                                    fontWeight: 'bold',
+                                                                    textAlign: 'center',
+                                                                    lineHeight: '1.2'
+                                                                }}>
+                                                                    {({ferie: '🎌', conges: '🏖️', fermeture: '🚫', formation_formateur: '📚', autre: '⚠️'})[creneauInfo.motif_fermeture] || '🚫'}
+                                                                    <div style={{fontSize: '7px', marginTop: '2px'}}>{getStatutLabel(creneauInfo)}</div>
+                                                                </div>
+                                                            ) : creneauInfo.statut === 'absent' ? (
                                                                 <div style={{ 
                                                                     fontSize: '16px',
                                                                     fontWeight: 'bold',
@@ -704,8 +762,9 @@ export default function MonPlanningHebdo({
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
                                     padding: '12px',
-                                    backgroundColor: creneau.statut === 'dispo_except' ? '#fffbeb' :
-                                                     creneau.statut === 'affecte_coordo' ? '#eff6ff' : 
+                                    backgroundColor: creneau.statut === 'fermeture' ? '#f1f5f9' :
+                                                     creneau.statut === 'dispo_except' ? '#fffbeb' :
+                                                     creneau.statut === 'affecte_coordo' ? '#eff6ff' :
                                                      creneau.statut === 'absent' ? '#fef2f2' :
                                                      creneau.statut === 'disponible_non_choisi' ? '#f0f9ff' : '#eff6ff',
                                     borderRadius: '8px',
@@ -714,7 +773,8 @@ export default function MonPlanningHebdo({
                                 }}>
                                     <div style={{ 
                                         fontWeight: '600', 
-                                        color: creneau.statut === 'dispo_except' ? '#92400e' :
+                                        color: creneau.statut === 'fermeture' ? '#475569' :
+                                               creneau.statut === 'dispo_except' ? '#92400e' :
                                                creneau.statut === 'affecte_coordo' ? '#1e40af' :
                                                creneau.statut === 'absent' ? '#991b1b' :
                                                creneau.statut === 'disponible_non_choisi' ? '#3b82f6' : '#1e40af'
@@ -732,11 +792,11 @@ export default function MonPlanningHebdo({
                                             backgroundColor: getLieuCouleur(creneau.lieu_id),
                                             borderRadius: '3px'
                                         }} />
-                                        <span style={{ 
+                                        <span style={{
                                             color: '#6b7280',
                                             fontSize: '12px'
                                         }}>
-                                            {getLieuNom(creneau.lieu_id)}
+                                            {creneau.statut === 'fermeture' ? (creneau.description_fermeture || '') : getLieuNom(creneau.lieu_id)}
                                         </span>
                                         <span style={{
                                             fontSize: '10px',
@@ -744,9 +804,11 @@ export default function MonPlanningHebdo({
                                             padding: '2px 6px',
                                             borderRadius: '4px',
                                             backgroundColor: getStatutColor(creneau),
-                                            color: creneau.statut === 'disponible_non_choisi' ? '#3b82f6' : 
+                                            color: creneau.statut === 'fermeture' ? getBorderColor(creneau) :
+                                                   creneau.statut === 'disponible_non_choisi' ? '#3b82f6' :
                                                    creneau.statut === 'dispo_except' ? '#92400e' : 'white',
-                                            border: creneau.statut === 'disponible_non_choisi' ? '1px solid #3b82f6' : 'none'
+                                            border: creneau.statut === 'disponible_non_choisi' ? '1px solid #3b82f6' :
+                                                    creneau.statut === 'fermeture' ? `1px solid ${getBorderColor(creneau)}` : 'none'
                                         }}>
                                             {getStatutLabel(creneau)}
                                         </span>
