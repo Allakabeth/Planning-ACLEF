@@ -210,6 +210,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'OPCO')
             } else if (filtreDispositif === 'CDV') {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'CDV')
+            } else if (filtreDispositif === 'PM') {
+                apprenantsFiltres = apprenantsFiltres.filter(a => a.dispositif === 'PM')
             }
             
             // Filtre par lieu
@@ -783,7 +785,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
         const hsp = apprenants.filter(a => a.dispositif === 'HSP' && !a.archive).length
         const opco = apprenants.filter(a => a.dispositif === 'OPCO' && !a.archive).length
         const cdv = apprenants.filter(a => a.dispositif === 'CDV' && !a.archive).length
-        return { tous, actifs, archives, hsp, opco, cdv }
+        const pm = apprenants.filter(a => a.dispositif === 'PM' && !a.archive).length
+        return { tous, actifs, archives, hsp, opco, cdv, pm }
     }
 
     const stats = compterApprenants()
@@ -1216,6 +1219,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                     <option value="HSP">HSP</option>
                                     <option value="OPCO">OPCO</option>
                                     <option value="CDV">CDV</option>
+                                    <option value="PM">PM</option>
                                 </select>
                             </div>
                         </div>
@@ -1384,6 +1388,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                     <option value="HSP">HSP</option>
                                     <option value="OPCO">OPCO</option>
                                     <option value="CDV">CDV</option>
+                                    <option value="PM">PM</option>
                                 </select>
                             </div>
                         </div>
@@ -1571,6 +1576,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                 <option value="HSP">HSP uniquement</option>
                                 <option value="OPCO">OPCO uniquement</option>
                                 <option value="CDV">CDV uniquement</option>
+                                <option value="PM">PM uniquement</option>
                             </select>
                         </div>
                         
@@ -1708,8 +1714,8 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                             borderRadius: '12px',
                                             fontSize: '11px',
                                             fontWeight: '500',
-                                            backgroundColor: apprenant.dispositif === 'HSP' ? '#dbeafe' : apprenant.dispositif === 'OPCO' ? '#fef3c7' : '#e0e7ff',
-                                            color: apprenant.dispositif === 'HSP' ? '#1e40af' : apprenant.dispositif === 'OPCO' ? '#92400e' : '#4338ca'
+                                            backgroundColor: apprenant.dispositif === 'HSP' ? '#dbeafe' : apprenant.dispositif === 'OPCO' ? '#fef3c7' : apprenant.dispositif === 'PM' ? '#d1fae5' : '#e0e7ff',
+                                            color: apprenant.dispositif === 'HSP' ? '#1e40af' : apprenant.dispositif === 'OPCO' ? '#92400e' : apprenant.dispositif === 'PM' ? '#065f46' : '#4338ca'
                                         }}>
                                             {apprenant.dispositif || 'HSP'}
                                         </span>
@@ -2352,9 +2358,11 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                                     fontSize: '11px',
                                                     fontWeight: '500',
                                                     backgroundColor: parcours.dispositif === 'HSP' ? '#dbeafe' :
-                                                                    parcours.dispositif === 'OPCO' ? '#fef3c7' : '#e0e7ff',
+                                                                    parcours.dispositif === 'OPCO' ? '#fef3c7' :
+                                                                    parcours.dispositif === 'PM' ? '#d1fae5' : '#e0e7ff',
                                                     color: parcours.dispositif === 'HSP' ? '#1e40af' :
-                                                           parcours.dispositif === 'OPCO' ? '#92400e' : '#4338ca'
+                                                           parcours.dispositif === 'OPCO' ? '#92400e' :
+                                                           parcours.dispositif === 'PM' ? '#065f46' : '#4338ca'
                                                 }}>
                                                     {parcours.dispositif}
                                                 </span>
@@ -2525,6 +2533,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                                 <option value="HSP">HSP</option>
                                                 <option value="OPCO">OPCO</option>
                                                 <option value="CDV">CDV</option>
+                                                <option value="PM">PM</option>
                                             </select>
                                         </div>
                                         <div>
