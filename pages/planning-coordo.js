@@ -1640,6 +1640,17 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\nVos nouveaux créneaux :\n${creneauxDetail}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
                             type_expediteur: 'admin'
                         });
+
+                        // Notification email (non bloquante)
+                        try {
+                            await fetch('/api/email/send-notification', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom })
+                            });
+                        } catch (emailErr) {
+                            // Echec email silencieux - ne bloque pas l'app
+                        }
                     }
                 }
             }
