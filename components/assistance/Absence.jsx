@@ -20,6 +20,7 @@ export default function Absence({
     // ✅ NOUVEAU: États pour sélection créneaux M/AM
     const [creneauMatin, setCreneauMatin] = useState(false)
     const [creneauAM, setCreneauAM] = useState(false)
+    const [fermetures, setFermetures] = useState([])
 
     useEffect(() => {
         if (formateurId) {
@@ -147,12 +148,40 @@ export default function Absence({
                 console.log(`✅ Modifications affichées: ${absencesData.length} (en_attente + validées)`)
             }
 
+            // Charger les fermetures de la structure pour ce mois
+            const dernierJour = new Date(annee, mois + 1, 0)
+            const premierJourStr = `${annee}-${String(mois + 1).padStart(2, '0')}-01`
+            const dernierJourStr = `${annee}-${String(mois + 1).padStart(2, '0')}-${String(dernierJour.getDate()).padStart(2, '0')}`
+            const { data: fermeturesData } = await supabase
+                .from('jours_fermeture')
+                .select('*')
+                .lte('date_debut', dernierJourStr)
+                .or(`date_fin.gte.${premierJourStr},date_fin.is.null`)
+
+            setFermetures(fermeturesData || [])
+
+            // Marquer les jours fermes (priorite sur tout sauf absences deja posees)
+            if (fermeturesData) {
+                for (const dateStr of Object.keys(planning)) {
+                    if (planning[dateStr] === 'absent' || planning[dateStr] === 'dispo') continue
+                    const fermeture = fermeturesData.find(f => {
+                        const fin = f.date_fin || f.date_debut
+                        if (dateStr < f.date_debut || dateStr > fin) return false
+                        if (f.creneau) return false // Fermeture partielle (M ou AM) : ne pas bloquer la journee entiere
+                        return true
+                    })
+                    if (fermeture) {
+                        planning[dateStr] = 'fermeture'
+                    }
+                }
+            }
+
             setPlanningOriginal(planning)
             setPlanningModifie({...planning})
 
         } catch (error) {
-            console.error('⚠️ Erreur:', error.message)
-            onError?.(`⚠️ Erreur: ${error.message}`)
+            console.error('Erreur:', error.message)
+            onError?.(`Erreur: ${error.message}`)
         } finally {
             setIsLoading(false)
         }
@@ -168,6 +197,13 @@ export default function Absence({
     // Fonction pour obtenir les détails d'un statut
     const getStatutDetails = (statut) => {
         switch (statut) {
+            case 'fermeture':
+                return {
+                    backgroundColor: '#94a3b8',
+                    color: 'white',
+                    label: 'FERME',
+                    nom: 'Structure fermee'
+                }
             case 'absent':
                 return { 
                     backgroundColor: '#ef4444', 
@@ -220,7 +256,19 @@ export default function Absence({
         const mois = String(date.getMonth() + 1).padStart(2, '0')
         const jourStr = String(date.getDate()).padStart(2, '0')
         const dateStr = `${annee}-${mois}-${jourStr}`
-        
+
+        // Bloquer si jour ferme
+        if (planningModifie[dateStr] === 'fermeture') {
+            const fermeture = fermetures.find(f => {
+                const fin = f.date_fin || f.date_debut
+                return dateStr >= f.date_debut && dateStr <= fin
+            })
+            const motifLabels = { ferie: 'Jour ferie', conges: 'Conges', fermeture: 'Structure fermee', formation_formateur: 'Formation', autre: 'Ferme' }
+            const motifLabel = fermeture ? (motifLabels[fermeture.motif] || 'Ferme') : 'Ferme'
+            onError?.(`${motifLabel} - Modification impossible`)
+            return
+        }
+
         // Ajouter à l'historique avant de modifier
         setHistoriqueModi(prev => [...prev, { date: dateStr, action: 'modifier', mode: modeSelection }])
 

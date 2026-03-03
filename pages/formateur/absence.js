@@ -176,7 +176,9 @@ export default function AbsenceFormateur() {
                     if (planning[dateStr] === 'absent' || planning[dateStr] === 'dispo') continue;
                     const fermeture = fermeturesData.find(f => {
                         const fin = f.date_fin || f.date_debut;
-                        return dateStr >= f.date_debut && dateStr <= fin;
+                        if (dateStr < f.date_debut || dateStr > fin) return false;
+                        if (f.creneau) return false; // Fermeture partielle (M ou AM) : ne pas bloquer la journee entiere
+                        return true;
                     });
                     if (fermeture) {
                         planning[dateStr] = 'fermeture';
