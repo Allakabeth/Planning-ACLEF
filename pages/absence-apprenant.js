@@ -522,25 +522,29 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
         .eq('statut', 'actif');
       if (absError) throw absError;
 
-      // 3. Croiser les données
+      // 3. Récupérer le planning type de l'apprenant (pour absences période)
+      const { data: planningType } = await supabase
+        .from('planning_apprenants')
+        .select('jour, creneau, lieu_id')
+        .eq('apprenant_id', apprenantId)
+        .eq('actif', true);
+
+      // 4. Croiser les données - séances planifiées
       const recap = (seances || []).map(seance => {
         const dateSeance = new Date(seance.date);
         const creneauDB = seance.creneau; // 'matin' ou 'AM'
 
         // Chercher une absence correspondante
         const absence = (absencesApprenant || []).find(abs => {
-          // Absence par période
           if (abs.type === 'absence_periode') {
             return new Date(abs.date_debut) <= dateSeance && new Date(abs.date_fin) >= dateSeance;
           }
-          // Absence ponctuelle
           if (abs.type === 'absence_ponctuelle') {
             return abs.date_specifique === seance.date && abs.creneau === creneauDB;
           }
           return false;
         });
 
-        // Résoudre le nom du lieu
         const lieu = lieux.find(l => l.id === seance.lieu_id);
 
         return {
@@ -553,6 +557,66 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
           motif: absence ? (absence.motif || '-') : ''
         };
       });
+
+      // 5. Ajouter les absences non couvertes par le planning hebdomadaire
+      const existingKeys = new Set(recap.map(r => `${r.date}-${r.creneau === 'Matin' ? 'matin' : 'AM'}`));
+      const joursSemaine = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+      for (const abs of absencesApprenant || []) {
+        if (abs.type === 'absence_ponctuelle' && abs.date_specifique && abs.creneau) {
+          const key = `${abs.date_specifique}-${abs.creneau}`;
+          if (!existingKeys.has(key)) {
+            if ((!dateDebut || abs.date_specifique >= dateDebut) && (!dateFin || abs.date_specifique <= dateFin)) {
+              recap.push({
+                date: abs.date_specifique,
+                jour: joursSemaine[new Date(abs.date_specifique).getDay()],
+                creneau: abs.creneau === 'matin' ? 'Matin' : 'Après-midi',
+                lieu_nom: '-',
+                statut: 'absent',
+                type_absence: abs.type,
+                motif: abs.motif || '-'
+              });
+              existingKeys.add(key);
+            }
+          }
+        } else if (abs.type === 'absence_periode' && abs.date_debut && abs.date_fin) {
+          const start = new Date(abs.date_debut);
+          const end = new Date(abs.date_fin);
+          const effectiveStart = dateDebut && new Date(dateDebut) > start ? new Date(dateDebut) : new Date(start);
+          const effectiveEnd = dateFin && new Date(dateFin) < end ? new Date(dateFin) : new Date(end);
+
+          for (let d = new Date(effectiveStart); d <= effectiveEnd; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            const jourNom = joursSemaine[d.getDay()];
+
+            // Utiliser le planning type pour savoir quels créneaux l'apprenant a ce jour-là
+            const creneauxDuJour = (planningType || [])
+              .filter(pt => pt.jour === jourNom)
+              .map(pt => pt.creneau);
+
+            for (const cr of creneauxDuJour) {
+              const key = `${dateStr}-${cr}`;
+              if (!existingKeys.has(key)) {
+                const lieuPT = (planningType || []).find(pt => pt.jour === jourNom && pt.creneau === cr);
+                const lieu = lieuPT ? lieux.find(l => l.id === lieuPT.lieu_id) : null;
+                recap.push({
+                  date: dateStr,
+                  jour: jourNom,
+                  creneau: cr === 'matin' ? 'Matin' : 'Après-midi',
+                  lieu_nom: lieu ? lieu.nom : '-',
+                  statut: 'absent',
+                  type_absence: abs.type,
+                  motif: abs.motif || '-'
+                });
+                existingKeys.add(key);
+              }
+            }
+          }
+        }
+      }
+
+      // Trier par date puis créneau
+      recap.sort((a, b) => a.date.localeCompare(b.date) || (a.creneau === 'Matin' ? -1 : 1));
 
       setRecapData(recap);
     } catch (err) {

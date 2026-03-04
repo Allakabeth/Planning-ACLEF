@@ -87,8 +87,8 @@ async function createEmargementOPCOPDF(data) {
       doc.text('DATE :', 30, currentY);
       doc.font('Helvetica').text(formatDateFr(data.date), 80, currentY);
 
-      doc.font('Helvetica-Bold').text('HORAIRES :', 400, currentY);
-      doc.font('Helvetica').text(data.horaires, 480, currentY);
+      doc.font('Helvetica-Bold').text('HORAIRES :', 360, currentY);
+      doc.font('Helvetica').text(data.horaires, 440, currentY);
 
       currentY += 18;
 
@@ -102,7 +102,7 @@ async function createEmargementOPCOPDF(data) {
       doc.font('Helvetica-Bold').text('FORMATEUR :', 30, currentY);
       doc.font('Helvetica').text(nomFormateur, 120, currentY);
 
-      doc.font('Helvetica-Bold').text('SIGNATURE :', 400, currentY);
+      doc.font('Helvetica-Bold').text('SIGNATURE :', 360, currentY);
 
       currentY += 20;
 
@@ -110,20 +110,20 @@ async function createEmargementOPCOPDF(data) {
       // TITRE
       // ========================================
       doc.fontSize(14).font('Helvetica-Bold')
-        .text('FORMATION COMPETENCES CLES', 30, currentY, { align: 'center', width: 535 });
+        .text('FORMATION COMPETENCES CLES', 30, currentY, { align: 'center', width: 505 });
 
       currentY += 20;
 
       doc.fontSize(11).font('Helvetica-Bold')
-        .text('(formation financée par les entreprises ou leur OPCO)', 30, currentY, { align: 'center', width: 535 });
+        .text('(formation financée par les entreprises ou leur OPCO)', 30, currentY, { align: 'center', width: 505 });
 
       currentY += 25;
 
       // ========================================
       // TABLEAU DES APPRENANTS
       // ========================================
-      const colNomWidth = 320;
-      const colSignatureWidth = 235;
+      const colNomWidth = 290;
+      const colSignatureWidth = 215;
       const rowHeight = 35;
 
       // En-têtes
@@ -175,7 +175,7 @@ async function createEmargementOPCOPDF(data) {
       if (fs.existsSync(logoDPath)) {
         // Positionner en bas de page (hauteur A4 portrait = 842 points)
         const bottomY = pageHeight - 100; // 100 points du bas
-        doc.image(logoDPath, 30, bottomY, { width: 535 });
+        doc.image(logoDPath, 30, bottomY, { width: 505 });
       }
 
       doc.end();
