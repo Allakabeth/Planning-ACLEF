@@ -195,6 +195,14 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
     commentaire: ''
   });
 
+  // États pour le récapitulatif présences/absences
+  const [showRecap, setShowRecap] = useState(false);
+  const [recapApprenantId, setRecapApprenantId] = useState('');
+  const [recapData, setRecapData] = useState([]);
+  const [recapLoading, setRecapLoading] = useState(false);
+  const [recapDateDebut, setRecapDateDebut] = useState('');
+  const [recapDateFin, setRecapDateFin] = useState('');
+
   // 🎯 MODE ÉDITION : On peut modifier SI l'apprenant sélectionné n'est PAS verrouillé par un autre admin
   const apprenantEstVerrouille = formData.apprenant_id && apprenantsVerrouilles.some(v => v.apprenant_id === formData.apprenant_id);
   const canEdit = !apprenantEstVerrouille;
@@ -286,7 +294,7 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
       // Charger les apprenants
       const { data: apprenantsData, error: apprenantsError } = await supabase
         .from('users')
-        .select('id, nom, prenom')
+        .select('id, nom, prenom, date_entree_formation')
         .eq('role', 'apprenant')
         .eq('archive', false)
         .order('nom', { ascending: true });
@@ -484,6 +492,74 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
       lieu_id: '',
       motif: ''
     });
+  };
+
+  // Charger le récapitulatif présences/absences pour un apprenant
+  const loadRecapData = async (apprenantId, dateDebut, dateFin) => {
+    if (!apprenantId) return;
+    setRecapLoading(true);
+    setRecapData([]);
+
+    try {
+      // 1. Récupérer les séances planifiées contenant cet apprenant
+      let query = supabase
+        .from('planning_hebdomadaire')
+        .select('date, jour, creneau, lieu_id')
+        .contains('apprenants_ids', [apprenantId])
+        .order('date', { ascending: true });
+
+      if (dateDebut) query = query.gte('date', dateDebut);
+      if (dateFin) query = query.lte('date', dateFin);
+
+      const { data: seances, error: seancesError } = await query;
+      if (seancesError) throw seancesError;
+
+      // 2. Récupérer les absences de cet apprenant
+      const { data: absencesApprenant, error: absError } = await supabase
+        .from('absences_apprenants')
+        .select('type, date_debut, date_fin, date_specifique, creneau, motif')
+        .eq('apprenant_id', apprenantId)
+        .eq('statut', 'actif');
+      if (absError) throw absError;
+
+      // 3. Croiser les données
+      const recap = (seances || []).map(seance => {
+        const dateSeance = new Date(seance.date);
+        const creneauDB = seance.creneau; // 'matin' ou 'AM'
+
+        // Chercher une absence correspondante
+        const absence = (absencesApprenant || []).find(abs => {
+          // Absence par période
+          if (abs.type === 'absence_periode') {
+            return new Date(abs.date_debut) <= dateSeance && new Date(abs.date_fin) >= dateSeance;
+          }
+          // Absence ponctuelle
+          if (abs.type === 'absence_ponctuelle') {
+            return abs.date_specifique === seance.date && abs.creneau === creneauDB;
+          }
+          return false;
+        });
+
+        // Résoudre le nom du lieu
+        const lieu = lieux.find(l => l.id === seance.lieu_id);
+
+        return {
+          date: seance.date,
+          jour: seance.jour,
+          creneau: creneauDB === 'matin' ? 'Matin' : 'Après-midi',
+          lieu_nom: lieu ? lieu.nom : '-',
+          statut: absence ? 'absent' : 'present',
+          type_absence: absence ? absence.type : null,
+          motif: absence ? (absence.motif || '-') : ''
+        };
+      });
+
+      setRecapData(recap);
+    } catch (err) {
+      setError('Erreur chargement récapitulatif: ' + err.message);
+    } finally {
+      setRecapLoading(false);
+    }
   };
 
   const handleInputChange = async (e) => {
@@ -1075,23 +1151,41 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
           <h2 style={{ fontSize: '1.5rem', margin: 0, color: '#333' }}>
             📋 Absences récentes
           </h2>
-          <input
-            type="text"
-            placeholder="🔍 Filtrer par nom..."
-            value={filtreNom}
-            onChange={(e) => setFiltreNom(e.target.value)}
-            style={{
-              padding: '8px 15px',
-              border: '1px solid #ddd',
-              borderRadius: '8px',
-              fontSize: '14px',
-              minWidth: '250px',
-              outline: 'none',
-              transition: 'border-color 0.2s'
-            }}
-            onFocus={(e) => e.target.style.borderColor = '#667eea'}
-            onBlur={(e) => e.target.style.borderColor = '#ddd'}
-          />
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowRecap(true)}
+              style={{
+                padding: '8px 16px',
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Recapitulatif
+            </button>
+            <input
+              type="text"
+              placeholder="Filtrer par nom..."
+              value={filtreNom}
+              onChange={(e) => setFiltreNom(e.target.value)}
+              style={{
+                padding: '8px 15px',
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                fontSize: '14px',
+                minWidth: '250px',
+                outline: 'none',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#667eea'}
+              onBlur={(e) => e.target.style.borderColor = '#ddd'}
+            />
+          </div>
         </div>
 
         {(() => {
@@ -1222,6 +1316,190 @@ function AbsenceApprenant({ user, logout, inactivityTime, priority }) {
           );
         })()}
       </div>
+
+      {/* Modal Récapitulatif Présences/Absences */}
+      {showRecap && (
+        <div
+          onClick={() => setShowRecap(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              padding: '30px',
+              maxWidth: '900px',
+              width: '90%',
+              maxHeight: '85vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, color: '#333' }}>Recapitulatif Presences / Absences</h2>
+              <button
+                onClick={() => setShowRecap(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666' }}
+              >
+                X
+              </button>
+            </div>
+
+            {/* Filtres */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '20px' }}>
+              <div style={{ flex: '1', minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#555' }}>Apprenant</label>
+                <select
+                  value={recapApprenantId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setRecapApprenantId(id);
+                    setRecapData([]);
+                    if (!id) return;
+                    // Pré-remplir dates et charger automatiquement
+                    const app = apprenants.find(a => a.id === id);
+                    const debut = (app && app.date_entree_formation) || '';
+                    const today = new Date().toISOString().split('T')[0];
+                    setRecapDateDebut(debut);
+                    setRecapDateFin(today);
+                    loadRecapData(id, debut, today);
+                  }}
+                  style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                >
+                  <option value="">-- Choisir un apprenant --</option>
+                  {apprenants.map(a => (
+                    <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#555' }}>Debut</label>
+                <input
+                  type="date"
+                  value={recapDateDebut}
+                  onChange={(e) => setRecapDateDebut(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px', color: '#555' }}>Fin</label>
+                <input
+                  type="date"
+                  value={recapDateFin}
+                  onChange={(e) => setRecapDateFin(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px' }}
+                />
+              </div>
+              <button
+                onClick={() => loadRecapData(recapApprenantId, recapDateDebut, recapDateFin)}
+                disabled={!recapApprenantId || recapLoading}
+                style={{
+                  padding: '8px 20px',
+                  background: !recapApprenantId ? '#94a3b8' : 'linear-gradient(135deg, #667eea, #764ba2)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  cursor: !recapApprenantId ? 'not-allowed' : 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                {recapLoading ? 'Chargement...' : 'Charger'}
+              </button>
+            </div>
+
+            {/* Compteurs */}
+            {recapData.length > 0 && (() => {
+              const total = recapData.length;
+              const presents = recapData.filter(r => r.statut === 'present').length;
+              const absents = recapData.filter(r => r.statut === 'absent').length;
+              return (
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+                  <div style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#f0f0f0', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: '700' }}>{total}</div>
+                    <div style={{ fontSize: '11px', color: '#666' }}>Seances</div>
+                  </div>
+                  <div style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#dcfce7', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#16a34a' }}>{presents}</div>
+                    <div style={{ fontSize: '11px', color: '#166534' }}>Presents</div>
+                  </div>
+                  <div style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#fef2f2', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#dc2626' }}>{absents}</div>
+                    <div style={{ fontSize: '11px', color: '#991b1b' }}>Absents</div>
+                  </div>
+                  <div style={{ padding: '10px 20px', borderRadius: '8px', backgroundColor: '#eff6ff', textAlign: 'center' }}>
+                    <div style={{ fontSize: '22px', fontWeight: '700', color: '#2563eb' }}>
+                      {total > 0 ? Math.round((presents / total) * 100) : 0}%
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#1e40af' }}>Taux presence</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Tableau */}
+            {recapData.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8fafc' }}>
+                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Date</th>
+                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Jour</th>
+                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Creneau</th>
+                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Lieu</th>
+                      <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #e5e7eb' }}>Statut</th>
+                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>Motif</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recapData.map((row, idx) => (
+                      <tr key={idx} style={{
+                        backgroundColor: row.statut === 'absent' ? '#fef2f2' : (idx % 2 === 0 ? 'white' : '#f9fafb')
+                      }}>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb' }}>
+                          {new Date(row.date).toLocaleDateString('fr-FR')}
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb' }}>{row.jour}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb' }}>{row.creneau}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb' }}>{row.lieu_nom}</td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '3px 10px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            backgroundColor: row.statut === 'present' ? '#dcfce7' : '#fecaca',
+                            color: row.statut === 'present' ? '#166534' : '#991b1b'
+                          }}>
+                            {row.statut === 'present' ? 'Present' : 'Absent'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', color: row.statut === 'absent' ? '#dc2626' : '#666' }}>
+                          {row.motif || ''}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Message si pas de données */}
+            {recapApprenantId && !recapLoading && recapData.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#6b7280', padding: '30px' }}>
+                Cliquez sur "Charger" pour afficher le recapitulatif
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

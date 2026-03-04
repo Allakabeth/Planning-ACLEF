@@ -18,7 +18,8 @@ export default function MenuApprenants({
   onRemoveApprenant,         // handler existant: (dayIndex, lieuIndex, creneau)
   disabled = false,
   couleurEnregistree,        // NOUVEAU: couleur persistante post-enregistrement
-  readOnly = false           // NOUVEAU: mode lecture seule (consultation)
+  readOnly = false,          // NOUVEAU: mode lecture seule (consultation)
+  absencesImprevuesMap = new Set()  // Map des absences imprevues pour coloration rouge
 }) {
   // État pour apprenants disponibles après filtrage intelligent
   const [apprenantsDisponibles, setApprenantsDisponibles] = useState([]);
@@ -268,6 +269,8 @@ export default function MenuApprenants({
         // Trouver l'apprenant sélectionné pour déterminer le style
         const apprenantSelectionne = apprenantsDisponibles.find(a => a.id === selectedId);
         const isPresenceExceptionnelle = apprenantSelectionne?.statutAbsence === 'presence_exceptionnelle';
+        const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+        const isAbsenceImprevue = selectedId && absencesImprevuesMap.has(`${selectedId}-${date}-${creneauDB}`);
 
         return (
         <div key={i}>
@@ -275,15 +278,18 @@ export default function MenuApprenants({
             style={{
               width: '100%',
               padding: '3px',
-              border: isPresenceExceptionnelle ? '2px solid #ff9800' : '1px solid #d1d5db',
+              border: isAbsenceImprevue ? '2px solid #dc2626' :
+                      isPresenceExceptionnelle ? '2px solid #ff9800' : '1px solid #d1d5db',
               borderRadius: '3px',
               fontSize: '10px',
-              background: isPresenceExceptionnelle ?
+              background: isAbsenceImprevue ?
+                           'linear-gradient(135deg, #dc2626, #ef4444)' :
+                           isPresenceExceptionnelle ?
                            'linear-gradient(135deg, #ff9800, #ffb74d)' :
                            (couleurEnregistree || 'rgba(255,255,255,0.9)'),
-              color: isPresenceExceptionnelle ? 'white' : '#000000',
+              color: (isAbsenceImprevue || isPresenceExceptionnelle) ? 'white' : '#000000',
               marginBottom: '3px',
-              fontWeight: isPresenceExceptionnelle ? 'bold' : 'normal',
+              fontWeight: (isAbsenceImprevue || isPresenceExceptionnelle) ? 'bold' : 'normal',
               cursor: readOnly ? 'not-allowed' : 'pointer'
             }}
             value={selectedId}

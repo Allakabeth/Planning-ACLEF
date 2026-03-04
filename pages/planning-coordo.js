@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
@@ -449,6 +449,8 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [showModalAbsencesFormateurs, setShowModalAbsencesFormateurs] = useState(false); // Modal absences formateurs
     const [showModalFermetures, setShowModalFermetures] = useState(false); // Modal fermetures/jours fériés
     const [fermetures, setFermetures] = useState([]); // Liste des fermetures chargées
+    const [showModalAbsenceImprevue, setShowModalAbsenceImprevue] = useState(false);
+    const [cellAbsenceImprevue, setCellAbsenceImprevue] = useState(null);
     const [nouvelleFermeture, setNouvelleFermeture] = useState({
         date_debut: '',
         date_fin: '',
@@ -474,6 +476,22 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         refreshEffectues: 0,
         derniereActivite: null
     });
+
+    // Map des absences ponctuelles pour coloration rouge dans les selects
+    const absencesImprevuesMap = useMemo(() => {
+        const map = new Set();
+        if (!absencesApprenants || absencesApprenants.length === 0) return map;
+        const weekDates = getWeekDates(currentDate);
+        absencesApprenants.forEach(abs => {
+            if (abs.type === 'absence_ponctuelle' && abs.date_specifique && abs.creneau &&
+                abs.motif === 'Absence non prevenue, non justifiee') {
+                if (weekDates.includes(abs.date_specifique)) {
+                    map.add(`${abs.apprenant_id}-${abs.date_specifique}-${abs.creneau}`);
+                }
+            }
+        });
+        return map;
+    }, [absencesApprenants, currentDate]);
 
     // ☆☆☆ HELPER FUNCTIONS POUR IMPRESSION - RÉCUPÉRATION DES NOMS ☆☆☆
     // Helper pour récupérer le nom du lieu
@@ -1424,7 +1442,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         if (hasChanges) {
             setApprenantsParCase(newApprenantsParCase);
         }
-    }, [dataLoaded, absencesApprenants, currentDate]);
+    }, [dataLoaded, absencesApprenants, currentDate, apprenantsParCase]);
     // ═══════════════════════════════════════════════════════════════
 
     // FONCTION POUR VIDER LE PLANNING D'UNE SEMAINE
@@ -2430,6 +2448,102 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     return newState;
                 });
             });
+        }
+    };
+
+    // Handler pour marquer un apprenant absent (absence imprevue)
+    const handleMarquerAbsenceImprevue = async (apprenantId) => {
+        if (!cellAbsenceImprevue) return;
+
+        const { date, creneau } = cellAbsenceImprevue;
+        const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+
+        const absKey = `${apprenantId}-${date}-${creneauDB}`;
+        if (absencesImprevuesMap.has(absKey)) {
+            setMessage('Absence deja enregistree pour cet apprenant');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/absences-apprenants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apprenant_id: apprenantId,
+                    type: 'absence_ponctuelle',
+                    date_specifique: date,
+                    creneau: creneauDB,
+                    motif: 'Absence non prevenue, non justifiee'
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                setMessage('Erreur: ' + (result.error || 'Erreur inconnue'));
+                return;
+            }
+
+            // Recharger les absences apprenants pour mettre a jour la carte
+            const { data: absData } = await supabase
+                .from('absences_apprenants')
+                .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
+                .eq('statut', 'actif');
+
+            if (absData) setAbsencesApprenants(absData);
+
+            const apprenant = apprenants.find(a => a.id === apprenantId);
+            setMessage('Absence enregistree pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
+
+        } catch (error) {
+            setMessage('Erreur lors de la creation de l\'absence');
+        }
+    };
+
+    const handleAnnulerAbsenceImprevue = async (apprenantId) => {
+        if (!cellAbsenceImprevue) return;
+
+        const { date, creneau } = cellAbsenceImprevue;
+        const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+
+        // Trouver l'enregistrement d'absence dans le state existant
+        const absence = absencesApprenants.find(abs =>
+            abs.apprenant_id === apprenantId &&
+            abs.type === 'absence_ponctuelle' &&
+            abs.date_specifique === date &&
+            abs.creneau === creneauDB
+        );
+
+        if (!absence) {
+            setMessage('Absence non trouvee');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/admin/absences-apprenants?id=${absence.id}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                setMessage('Erreur: ' + (result.error || 'Erreur inconnue'));
+                return;
+            }
+
+            // Recharger les absences apprenants
+            const { data: absData } = await supabase
+                .from('absences_apprenants')
+                .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
+                .eq('statut', 'actif');
+
+            if (absData) setAbsencesApprenants(absData);
+
+            const apprenant = apprenants.find(a => a.id === apprenantId);
+            setMessage('Absence annulee pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
+
+        } catch (error) {
+            setMessage('Erreur lors de l\'annulation de l\'absence');
         }
     };
 
@@ -3481,6 +3595,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                                                             disabled={!selectedLieuId}
                                                             couleurEnregistree={couleursEnregistrees[cellKey]}
                                                             readOnly={!canEdit}
+                                                            absencesImprevuesMap={absencesImprevuesMap}
                                                         />
 
                                                         {/* Boutons Organisation Pédagogique et Émargement */}
@@ -3534,6 +3649,30 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                                                                     title="Générer feuille d'émargement (HSP ou OPCO)"
                                                                 >
                                                                     📝
+                                                                </button>
+
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setCellAbsenceImprevue({
+                                                                            date: getWeekDates(currentDate)[dayIndex],
+                                                                            creneau: creneau,
+                                                                            lieu_nom: lieux.find(l => l.id === selectedLieuId)?.nom || '',
+                                                                            cellKey: cellKey
+                                                                        });
+                                                                        setShowModalAbsenceImprevue(true);
+                                                                    }}
+                                                                    disabled={!selectedLieuId}
+                                                                    style={{
+                                                                        fontSize: '18px',
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        cursor: selectedLieuId ? 'pointer' : 'not-allowed',
+                                                                        opacity: selectedLieuId ? 1 : 0.3,
+                                                                        padding: '4px'
+                                                                    }}
+                                                                    title="Absence imprevue apprenant"
+                                                                >
+                                                                    🚨
                                                                 </button>
                                                             </div>
                                                         )}
@@ -5106,6 +5245,138 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             >
                                 Fermer
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Absence Imprevue */}
+            {showModalAbsenceImprevue && cellAbsenceImprevue && (
+                <div
+                    onClick={() => setShowModalAbsenceImprevue(false)}
+                    style={{
+                        position: 'fixed',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            backgroundColor: 'white',
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '90%',
+                            maxHeight: '80vh',
+                            overflow: 'auto',
+                            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
+                        }}
+                    >
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px',
+                            borderBottom: '2px solid #ef4444',
+                            paddingBottom: '12px'
+                        }}>
+                            <h2 style={{ margin: 0, color: '#ef4444', fontSize: '18px', fontWeight: '600' }}>
+                                Absence Imprevue
+                            </h2>
+                            <button
+                                onClick={() => setShowModalAbsenceImprevue(false)}
+                                style={{
+                                    padding: '6px 12px',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '14px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Fermer
+                            </button>
+                        </div>
+
+                        <div style={{
+                            backgroundColor: '#f3f4f6',
+                            padding: '12px',
+                            borderRadius: '8px',
+                            marginBottom: '16px',
+                            fontSize: '14px'
+                        }}>
+                            <strong>Date :</strong> {cellAbsenceImprevue.date} | <strong>Creneau :</strong> {cellAbsenceImprevue.creneau === 'Matin' ? 'Matin' : 'Apres-midi'} | <strong>Lieu :</strong> {cellAbsenceImprevue.lieu_nom || 'Non defini'}
+                        </div>
+
+                        <div>
+                            {(() => {
+                                const cellApprenantsIds = (apprenantsParCase[cellAbsenceImprevue.cellKey] || []).filter(id => id !== '');
+
+                                if (cellApprenantsIds.length === 0) {
+                                    return (
+                                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
+                                            Aucun apprenant dans cette case
+                                        </div>
+                                    );
+                                }
+
+                                const creneauDB = cellAbsenceImprevue.creneau === 'Matin' ? 'matin' : 'AM';
+
+                                return cellApprenantsIds.map(appId => {
+                                    const apprenant = apprenants.find(a => a.id === appId);
+                                    if (!apprenant) return null;
+
+                                    const absKey = `${appId}-${cellAbsenceImprevue.date}-${creneauDB}`;
+                                    const dejaAbsent = absencesImprevuesMap.has(absKey);
+
+                                    return (
+                                        <div
+                                            key={appId}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 12px',
+                                                marginBottom: '8px',
+                                                borderRadius: '8px',
+                                                backgroundColor: dejaAbsent ? '#fef2f2' : 'white',
+                                                border: '1px solid ' + (dejaAbsent ? '#fecaca' : '#e5e7eb')
+                                            }}
+                                        >
+                                            <span style={{
+                                                fontWeight: '500',
+                                                color: dejaAbsent ? '#dc2626' : '#1f2937',
+                                                fontSize: '14px'
+                                            }}>
+                                                {apprenant.prenom} {apprenant.nom}
+                                                {dejaAbsent && ' - Absent'}
+                                            </span>
+                                            <button
+                                                onClick={() => dejaAbsent ? handleAnnulerAbsenceImprevue(appId) : handleMarquerAbsenceImprevue(appId)}
+                                                style={{
+                                                    padding: '6px 14px',
+                                                    backgroundColor: dejaAbsent ? '#16a34a' : '#dc2626',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    fontSize: '12px',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '600'
+                                                }}
+                                            >
+                                                {dejaAbsent ? 'Annuler l\'absence' : 'Marquer absent'}
+                                            </button>
+                                        </div>
+                                    );
+                                });
+                            })()}
                         </div>
                     </div>
                 </div>
