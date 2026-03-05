@@ -1711,6 +1711,17 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             statut: 'envoye',
                             type: 'planning_valide'
                         });
+
+                        // Notification email (non bloquante)
+                        try {
+                            await fetch('/api/email/send-notification', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom })
+                            });
+                        } catch (emailErr) {
+                            // Echec email silencieux - ne bloque pas l'app
+                        }
                     }
                 }
             }
