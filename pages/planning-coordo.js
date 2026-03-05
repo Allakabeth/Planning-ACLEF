@@ -1397,7 +1397,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
 
             // Filtrer les apprenants absents
             const apprenantsNonAbsents = apprenantsIds.filter(apprenantId => {
-                if (!apprenantId) return false;
+                if (!apprenantId) return true;
 
                 const dateCheck = new Date(dateStr);
                 const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
@@ -1442,7 +1442,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         if (hasChanges) {
             setApprenantsParCase(newApprenantsParCase);
         }
-    }, [dataLoaded, absencesApprenants, currentDate, apprenantsParCase]);
+    }, [dataLoaded, absencesApprenants, currentDate]);
     // ═══════════════════════════════════════════════════════════════
 
     // FONCTION POUR VIDER LE PLANNING D'UNE SEMAINE
