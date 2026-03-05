@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Methode non autorisee' });
   }
 
-  const { formateurNom, formateurPrenom } = req.body;
+  const { formateurNom, formateurPrenom, typeNotification, semaine } = req.body;
 
   if (!formateurNom || !formateurPrenom) {
     return res.status(400).json({ error: 'formateurNom et formateurPrenom requis' });
@@ -42,7 +42,11 @@ export default async function handler(req, res) {
       from: SMTP_USER,
       to: NOTIFY_EMAIL,
       subject: 'NOTIF-' + identifiant,
-      text: "Une modification qui vous concerne a ete effectuee sur votre planning de l'ACLEF. Connectez-vous pour la consulter.",
+      text: typeNotification === 'validation'
+        ? `Le planning de la semaine ${semaine || ''} a ete valide. Connectez-vous pour le consulter.\n\nNe repondez pas a ce mail.`
+        : typeNotification === 'modification'
+        ? `Une modification a ete effectuee sur votre planning de la semaine ${semaine || ''}. Connectez-vous pour la consulter.\n\nNe repondez pas a ce mail.`
+        : `Une modification qui vous concerne a ete effectuee sur votre planning de l'ACLEF. Connectez-vous pour la consulter.\n\nNe repondez pas a ce mail.`,
     });
 
     return res.status(200).json({ success: true });

@@ -1664,7 +1664,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             await fetch('/api/email/send-notification', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom })
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine })
                             });
                         } catch (emailErr) {
                             // Echec email silencieux - ne bloque pas l'app
@@ -1717,7 +1717,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             await fetch('/api/email/send-notification', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom })
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine })
                             });
                         } catch (emailErr) {
                             // Echec email silencieux - ne bloque pas l'app
