@@ -43,10 +43,10 @@ export default async function handler(req, res) {
       to: NOTIFY_EMAIL,
       subject: 'NOTIF-' + identifiant,
       text: typeNotification === 'validation'
-        ? `Le planning de la semaine ${semaine || ''} a ete valide. Connectez-vous pour le consulter.\n\nNe repondez pas a ce mail.`
+        ? `Le planning de la semaine ${semaine || ''} a été validé. Connectez-vous pour le consulter.\n\nNe répondez pas à ce mail.`
         : typeNotification === 'modification'
-        ? `Une modification a ete effectuee sur votre planning de la semaine ${semaine || ''}. Connectez-vous pour la consulter.\n\nNe repondez pas a ce mail.`
-        : `Une modification qui vous concerne a ete effectuee sur votre planning de l'ACLEF. Connectez-vous pour la consulter.\n\nNe repondez pas a ce mail.`,
+        ? `Une modification a été effectuée sur votre planning de la semaine ${semaine || ''}. Connectez-vous pour la consulter.\n\nNe répondez pas à ce mail.`
+        : `Une modification qui vous concerne a été effectuée sur votre planning de l'ACLEF. Connectez-vous pour la consulter.\n\nNe répondez pas à ce mail.`,
     });
 
     return res.status(200).json({ success: true });
