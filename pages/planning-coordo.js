@@ -1424,6 +1424,10 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                 );
 
                 if (absencePonctuelle) {
+                    // Si c'est une absence imprevue (depuis planning coordo), garder visible en rouge
+                    if (absencePonctuelle.motif === 'Absence non prevenue, non justifiee') {
+                        return true;
+                    }
                     console.log(`🧹 Apprenant ${apprenantId} absent (ponctuel) le ${dateStr} ${creneau}`);
                     return false;
                 }
