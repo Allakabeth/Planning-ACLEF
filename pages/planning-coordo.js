@@ -484,7 +484,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         const weekDates = getWeekDates(currentDate);
         absencesApprenants.forEach(abs => {
             if (abs.type === 'absence_ponctuelle' && abs.date_specifique && abs.creneau &&
-                abs.motif === 'Absence non prevenue, non justifiee') {
+                abs.motif === 'ABSENCE') {
                 if (weekDates.includes(abs.date_specifique)) {
                     map.add(`${abs.apprenant_id}-${abs.date_specifique}-${abs.creneau}`);
                 }
@@ -1531,11 +1531,22 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
             setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
-            await envoyerMessagesValidation(stats, semaine, weekDates);
+            const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates);
+
+            let emailInfo = '📧 Messages envoyés aux formateurs';
+            if (emailResult?.erreur) {
+                emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
+            } else if (emailResult?.aucuneAffectation) {
+                emailInfo = '⚠️ Aucune affectation trouvée - pas de notifications envoyées';
+            } else if (emailResult?.emailsEchoues > 0) {
+                emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
+            } else if (emailResult?.emailsEnvoyes > 0) {
+                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+            }
 
             setMessage(`✅ Planning semaine ${semaine} validé et transmis !
 ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
-📧 Messages envoyés aux formateurs`);
+${emailInfo}`);
             setTimeout(() => setMessage(''), 8000);
 
         } catch (error) {
@@ -1573,13 +1584,23 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
             setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
             // 5. Envoyer messages seulement aux formateurs modifiés
+            let emailInfo = 'Aucun formateur modifié';
             if (formateursModifies.length > 0) {
-                await envoyerMessagesModifications(formateursModifies, semaine, weekDates);
+                const emailResult = await envoyerMessagesModifications(formateursModifies, semaine, weekDates);
+                if (emailResult?.erreur) {
+                    emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
+                } else if (emailResult?.aucuneAffectation) {
+                    emailInfo = '⚠️ Aucune affectation trouvée - pas de notifications envoyées';
+                } else if (emailResult?.emailsEchoues > 0) {
+                    emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
+                } else if (emailResult?.emailsEnvoyes > 0) {
+                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+                }
             }
 
             setMessage(`✅ Modifications validées !
 ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifié(s)
-📧 Messages envoyés aux formateurs modifiés`);
+${emailInfo}`);
             setTimeout(() => setMessage(''), 8000);
 
         } catch (error) {
@@ -1632,12 +1653,17 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
     // Fonction envoi messages pour modifications
     const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates) => {
         try {
-            const { data: affectations } = await supabase
+            const { data: affectations, error: queryError } = await supabase
                 .from('planning_formateurs_hebdo')
                 .select('formateur_id, date, creneau, lieu_nom')
                 .in('date', weekDates)
                 .in('formateur_id', formateursModifies)
                 .eq('statut', 'attribue');
+
+            if (queryError) {
+                console.error('[EMAIL-DEBUG] Erreur requête modifications:', queryError);
+                return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: queryError.message };
+            }
 
             if (affectations && affectations.length > 0) {
                 const affectationsParFormateur = {};
@@ -1647,6 +1673,9 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     }
                     affectationsParFormateur[aff.formateur_id].push(aff);
                 });
+
+                let emailsEnvoyes = 0;
+                let emailsEchoues = 0;
 
                 for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
                     const formateur = formateurs.find(f => f.id === formateurId);
@@ -1655,7 +1684,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             `${aff.date} ${aff.creneau} à ${aff.lieu_nom}`
                         ).join('\n');
 
-                        await supabase.from('messages').insert({
+                        const { error: msgError } = await supabase.from('messages').insert({
                             expediteur: 'Coordination ACLEF',
                             destinataire_id: formateurId,
                             objet: `Planning modifié - semaine ${semaine}`,
@@ -1663,33 +1692,55 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             type_expediteur: 'admin'
                         });
 
-                        // Notification email (non bloquante)
+                        if (msgError) {
+                            console.error('[EMAIL-DEBUG] Erreur insertion message modif pour', formateur.prenom, formateur.nom, ':', msgError);
+                        }
+
+                        // Notification email
                         try {
-                            await fetch('/api/email/send-notification', {
+                            const emailRes = await fetch('/api/email/send-notification', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine })
                             });
+                            if (!emailRes.ok) {
+                                const errBody = await emailRes.json().catch(() => ({}));
+                                console.error('[EMAIL-DEBUG] Echec email modif pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
+                                emailsEchoues++;
+                            } else {
+                                emailsEnvoyes++;
+                            }
                         } catch (emailErr) {
-                            // Echec email silencieux - ne bloque pas l'app
+                            console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
+                            emailsEchoues++;
                         }
                     }
                 }
+                return { emailsEnvoyes, emailsEchoues };
             }
+            return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
         } catch (error) {
             console.error('Erreur envoi messages modifications:', error);
-            throw error;
+            return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
         }
     };
 
     // Fonction envoi messages validation
     const envoyerMessagesValidation = async (stats, semaine, weekDates) => {
         try {
-            const { data: affectations } = await supabase
+            console.warn('[EMAIL-DEBUG] envoyerMessagesValidation appelée, weekDates:', weekDates);
+            const { data: affectations, error: queryError } = await supabase
                 .from('planning_formateurs_hebdo')
                 .select('formateur_id, date, creneau, lieu_nom')
                 .in('date', weekDates)
                 .eq('statut', 'attribue');
+
+            if (queryError) {
+                console.error('[EMAIL-DEBUG] Erreur requête affectations:', queryError);
+                return;
+            }
+
+            console.warn('[EMAIL-DEBUG] Affectations trouvées:', affectations?.length || 0);
 
             if (affectations && affectations.length > 0) {
                 const affectationsParFormateur = {};
@@ -1700,14 +1751,17 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     affectationsParFormateur[aff.formateur_id].push(aff);
                 });
 
+                let emailsEnvoyes = 0;
+                let emailsEchoues = 0;
+
                 for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
                     const formateur = formateurs.find(f => f.id === formateurId);
                     if (formateur) {
-                        const creneauxDetail = affectationsFormateur.map(aff => 
+                        const creneauxDetail = affectationsFormateur.map(aff =>
                             `${aff.date} ${aff.creneau} à ${aff.lieu_nom}`
                         ).join('\n');
 
-                        await supabase.from('messages').insert({
+                        const { error: msgError } = await supabase.from('messages').insert({
                             expediteur: 'Coordination ACLEF',
                             destinataire_id: formateurId,
                             objet: `Planning semaine ${semaine} validé`,
@@ -1716,21 +1770,41 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                             type: 'planning_valide'
                         });
 
-                        // Notification email (non bloquante)
+                        if (msgError) {
+                            console.error('[EMAIL-DEBUG] Erreur insertion message pour', formateur.prenom, formateur.nom, ':', msgError);
+                        }
+
+                        // Notification email
                         try {
-                            await fetch('/api/email/send-notification', {
+                            const emailRes = await fetch('/api/email/send-notification', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine })
                             });
+                            if (!emailRes.ok) {
+                                const errBody = await emailRes.json().catch(() => ({}));
+                                console.error('[EMAIL-DEBUG] Echec email pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
+                                emailsEchoues++;
+                            } else {
+                                emailsEnvoyes++;
+                            }
                         } catch (emailErr) {
-                            // Echec email silencieux - ne bloque pas l'app
+                            console.error('[EMAIL-DEBUG] Exception email pour', formateur.prenom, formateur.nom, ':', emailErr);
+                            emailsEchoues++;
                         }
+                    } else {
+                        console.warn('[EMAIL-DEBUG] Formateur non trouvé dans la liste pour id:', formateurId);
                     }
                 }
+                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
+                return { emailsEnvoyes, emailsEchoues };
+            } else {
+                console.warn('[EMAIL-DEBUG] Aucune affectation trouvée - pas d\'emails envoyés');
+                return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
             }
         } catch (error) {
-            console.error('Erreur envoi messages validation:', error);
+            console.error('[EMAIL-DEBUG] Erreur globale envoi messages validation:', error);
+            return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
         }
     };
 
@@ -2488,7 +2562,7 @@ ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifi
                     type: 'absence_ponctuelle',
                     date_specifique: date,
                     creneau: creneauDB,
-                    motif: 'Absence non prevenue, non justifiee'
+                    motif: 'ABSENCE'
                 })
             });
 
