@@ -307,8 +307,8 @@ async function createEmargementHSPPDF(data) {
           doc.fillColor('#000000').font('Helvetica').fontSize(9);
           doc.text(apprenant.nom.toUpperCase(), tableStartX + 5, currentY + 5, { width: colNomWidth - 10 });
           doc.text(apprenant.prenom, tableStartX + colNomWidth + 5, currentY + 5, { width: colPrenomWidth - 10 });
-          if (apprenant.absent) {
-            doc.text(`ABSENT - ${apprenant.motif_absence}`, tableStartX + colNomWidth + colPrenomWidth + colMatinWidth + colAMWidth + 5, currentY + 5, { width: colCommentairesWidth - 10 });
+          if (apprenant.commentaire) {
+            doc.text(apprenant.commentaire, tableStartX + colNomWidth + colPrenomWidth + colMatinWidth + colAMWidth + 5, currentY + 5, { width: colCommentairesWidth - 10 });
           }
         }
 

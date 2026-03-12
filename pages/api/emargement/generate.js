@@ -604,9 +604,8 @@ async function createEmargementWorkbook(data) {
       };
 
       // Commentaire (F-K fusionnées)
-      const commentaire = apprenant.absent ? `ABSENT - ${apprenant.motif_absence}` : '';
       worksheet.mergeCells(`F${rowNum}:K${rowNum}`);
-      row.getCell('F').value = commentaire;
+      row.getCell('F').value = apprenant.commentaire || '';
       row.getCell('F').font = { size: 11, name: 'Calibri' };
       row.getCell('F').alignment = { horizontal: 'left', vertical: 'middle' };
       row.getCell('F').border = {
