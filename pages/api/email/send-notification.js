@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Methode non autorisee' });
   }
 
-  const { formateurNom, formateurPrenom, typeNotification, semaine } = req.body;
+  const { formateurNom, formateurPrenom, typeNotification, semaine, details } = req.body;
 
   if (!formateurNom || !formateurPrenom) {
     return res.status(400).json({ error: 'formateurNom et formateurPrenom requis' });
@@ -43,10 +43,10 @@ export default async function handler(req, res) {
       to: NOTIFY_EMAIL,
       subject: 'NOTIF-' + identifiant,
       text: typeNotification === 'validation'
-        ? `Le planning de la semaine ${semaine || ''} a été validé. Connectez-vous pour le consulter.\n\nNe répondez pas à ce mail.`
+        ? `Le planning de la semaine ${semaine || ''} a été validé.\n\n${details || 'Connectez-vous pour le consulter.'}\n\nNe répondez pas à ce mail.`
         : typeNotification === 'modification'
-        ? `Une modification a été effectuée sur votre planning de la semaine ${semaine || ''}. Connectez-vous pour la consulter.\n\nNe répondez pas à ce mail.`
-        : `Une modification qui vous concerne a été effectuée sur votre planning de l'ACLEF. Connectez-vous pour la consulter.\n\nNe répondez pas à ce mail.`,
+        ? `Une modification a été effectuée sur votre planning de la semaine ${semaine || ''} :\n\n${details || 'Connectez-vous pour la consulter.'}\n\nNe répondez pas à ce mail.`
+        : `Une modification qui vous concerne a été effectuée sur votre planning de l'ACLEF.\n\n${details || 'Connectez-vous pour la consulter.'}\n\nNe répondez pas à ce mail.`,
     });
 
     return res.status(200).json({ success: true });

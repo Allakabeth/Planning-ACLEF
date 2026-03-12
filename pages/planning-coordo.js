@@ -8,6 +8,16 @@ import { isWeekPlusN, genererPlanningDepuisType } from '../lib/planningTypeUtils
 
 const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
+function dateVersJour(dateStr) {
+    const date = new Date(dateStr + 'T12:00:00');
+    const joursNoms = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    return joursNoms[date.getDay()];
+}
+
+function formatCreneau(creneau) {
+    return creneau === 'matin' ? 'matin' : 'après-midi';
+}
+
 // Skeleton Loader spécifique au Planning Coordinateur
 const SkeletonPlanningLoader = () => {
   const shimmer = {
@@ -1573,8 +1583,8 @@ ${emailInfo}`);
                 .select('*')
                 .in('date', weekDates);
 
-            // 2. Identifier les formateurs modifiés
-            const formateursModifies = await identifierFormateursModifies(planningActuel, weekDates);
+            // 2. Identifier les formateurs modifiés et leurs changements
+            const { ids: formateursModifies, details: detailsModifs } = await identifierFormateursModifies(planningActuel, weekDates);
 
             // 3. Sauvegarder le planning
             const stats = await sauvegarderPlanning('validé', weekDates);
@@ -1586,7 +1596,7 @@ ${emailInfo}`);
             // 5. Envoyer messages seulement aux formateurs modifiés
             let emailInfo = 'Aucun formateur modifié';
             if (formateursModifies.length > 0) {
-                const emailResult = await envoyerMessagesModifications(formateursModifies, semaine, weekDates);
+                const emailResult = await envoyerMessagesModifications(formateursModifies, semaine, weekDates, detailsModifs);
                 if (emailResult?.erreur) {
                     emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
                 } else if (emailResult?.aucuneAffectation) {
@@ -1612,9 +1622,10 @@ ${emailInfo}`);
         }
     };
 
-    // Fonction pour identifier les formateurs modifiés
+    // Fonction pour identifier les formateurs modifiés et leurs changements
     const identifierFormateursModifies = async (planningActuel, weekDates) => {
         const formateursModifies = new Set();
+        const detailsParFormateur = {}; // { formateurId: [{ jour, creneau, type: 'ajout'|'retrait', lieu }] }
 
         // Créer un map des données actuelles en base
         const planningActuelMap = {};
@@ -1628,6 +1639,9 @@ ${emailInfo}`);
         // Comparer avec l'état en cours d'édition
         jours.forEach((jour, dayIndex) => {
             (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
+                const lieuObj = lieux[lieuIndex];
+                const lieuNom = lieuObj?.nom || `Lieu ${lieuIndex}`;
+
                 ['Matin', 'AM'].forEach((creneau) => {
                     const key = `${dayIndex}-${lieuIndex}-${creneau}`;
                     const keyDB = `${jour}-${lieuIndex}-${creneau === 'Matin' ? 'matin' : 'AM'}`;
@@ -1640,85 +1654,91 @@ ${emailInfo}`);
                     const sontDifferents = JSON.stringify(formateursActuels.sort()) !== JSON.stringify(formateursDB.sort());
 
                     if (sontDifferents) {
-                        formateursActuels.forEach(id => formateursModifies.add(id));
-                        formateursDB.forEach(id => formateursModifies.add(id));
+                        const creneauLabel = formatCreneau(creneau === 'Matin' ? 'matin' : 'AM');
+
+                        // Formateurs ajoutés (dans UI mais pas en DB)
+                        formateursActuels.forEach(id => {
+                            formateursModifies.add(id);
+                            if (!formateursDB.includes(id)) {
+                                if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
+                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'ajout', lieu: lieuNom });
+                            }
+                        });
+
+                        // Formateurs retirés (en DB mais plus dans UI)
+                        formateursDB.forEach(id => {
+                            formateursModifies.add(id);
+                            if (!formateursActuels.includes(id)) {
+                                if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
+                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'retrait', lieu: lieuNom });
+                            }
+                        });
                     }
                 });
             });
         });
 
-        return Array.from(formateursModifies);
+        return { ids: Array.from(formateursModifies), details: detailsParFormateur };
     };
 
     // Fonction envoi messages pour modifications
-    const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates) => {
+    const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates, detailsModifs) => {
         try {
-            const { data: affectations, error: queryError } = await supabase
-                .from('planning_formateurs_hebdo')
-                .select('formateur_id, date, creneau, lieu_nom')
-                .in('date', weekDates)
-                .in('formateur_id', formateursModifies)
-                .eq('statut', 'attribue');
+            let emailsEnvoyes = 0;
+            let emailsEchoues = 0;
 
-            if (queryError) {
-                console.error('[EMAIL-DEBUG] Erreur requête modifications:', queryError);
-                return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: queryError.message };
-            }
+            for (const formateurId of formateursModifies) {
+                const formateur = formateurs.find(f => f.id === formateurId);
+                if (!formateur) continue;
 
-            if (affectations && affectations.length > 0) {
-                const affectationsParFormateur = {};
-                affectations.forEach(aff => {
-                    if (!affectationsParFormateur[aff.formateur_id]) {
-                        affectationsParFormateur[aff.formateur_id] = [];
-                    }
-                    affectationsParFormateur[aff.formateur_id].push(aff);
+                // Construire le détail des modifications pour ce formateur
+                const changements = detailsModifs[formateurId] || [];
+                let detailsText = '';
+                if (changements.length > 0) {
+                    detailsText = 'Modifications :\n' + changements.map(c =>
+                        c.type === 'ajout'
+                            ? `- ${c.jour} ${c.creneau} : ajouté à ${c.lieu}`
+                            : `- ${c.jour} ${c.creneau} : retiré de ${c.lieu}`
+                    ).join('\n');
+                }
+
+                const { error: msgError } = await supabase.from('messages').insert({
+                    expediteur: 'Coordination ACLEF',
+                    destinataire_id: formateurId,
+                    objet: `Planning modifié - semaine ${semaine}`,
+                    contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\n${detailsText}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
+                    type_expediteur: 'admin'
                 });
 
-                let emailsEnvoyes = 0;
-                let emailsEchoues = 0;
-
-                for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
-                    const formateur = formateurs.find(f => f.id === formateurId);
-                    if (formateur) {
-                        const creneauxDetail = affectationsFormateur.map(aff =>
-                            `${aff.date} ${aff.creneau} à ${aff.lieu_nom}`
-                        ).join('\n');
-
-                        const { error: msgError } = await supabase.from('messages').insert({
-                            expediteur: 'Coordination ACLEF',
-                            destinataire_id: formateurId,
-                            objet: `Planning modifié - semaine ${semaine}`,
-                            contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\nVos nouveaux créneaux :\n${creneauxDetail}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
-                            type_expediteur: 'admin'
-                        });
-
-                        if (msgError) {
-                            console.error('[EMAIL-DEBUG] Erreur insertion message modif pour', formateur.prenom, formateur.nom, ':', msgError);
-                        }
-
-                        // Notification email
-                        try {
-                            const emailRes = await fetch('/api/email/send-notification', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine })
-                            });
-                            if (!emailRes.ok) {
-                                const errBody = await emailRes.json().catch(() => ({}));
-                                console.error('[EMAIL-DEBUG] Echec email modif pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
-                                emailsEchoues++;
-                            } else {
-                                emailsEnvoyes++;
-                            }
-                        } catch (emailErr) {
-                            console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
-                            emailsEchoues++;
-                        }
-                    }
+                if (msgError) {
+                    console.error('[EMAIL-DEBUG] Erreur insertion message modif pour', formateur.prenom, formateur.nom, ':', msgError);
                 }
-                return { emailsEnvoyes, emailsEchoues };
+
+                // Notification email avec détails
+                const emailDetails = detailsText || 'Connectez-vous pour consulter les changements.';
+                try {
+                    const emailRes = await fetch('/api/email/send-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine, details: emailDetails })
+                    });
+                    if (!emailRes.ok) {
+                        const errBody = await emailRes.json().catch(() => ({}));
+                        console.error('[EMAIL-DEBUG] Echec email modif pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
+                        emailsEchoues++;
+                    } else {
+                        emailsEnvoyes++;
+                    }
+                } catch (emailErr) {
+                    console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
+                    emailsEchoues++;
+                }
             }
-            return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
+
+            if (emailsEnvoyes === 0 && emailsEchoues === 0) {
+                return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
+            }
+            return { emailsEnvoyes, emailsEchoues };
         } catch (error) {
             console.error('Erreur envoi messages modifications:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
@@ -1758,14 +1778,16 @@ ${emailInfo}`);
                     const formateur = formateurs.find(f => f.id === formateurId);
                     if (formateur) {
                         const creneauxDetail = affectationsFormateur.map(aff =>
-                            `${aff.date} ${aff.creneau} à ${aff.lieu_nom}`
+                            `- ${dateVersJour(aff.date)} ${formatCreneau(aff.creneau)} à ${aff.lieu_nom}`
                         ).join('\n');
+
+                        const emailDetails = `Vos interventions :\n${creneauxDetail}`;
 
                         const { error: msgError } = await supabase.from('messages').insert({
                             expediteur: 'Coordination ACLEF',
                             destinataire_id: formateurId,
                             objet: `Planning semaine ${semaine} validé`,
-                            contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été validé.\n\nVos interventions :\n${creneauxDetail}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
+                            contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été validé.\n\n${emailDetails}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
                             statut: 'envoye',
                             type: 'planning_valide'
                         });
@@ -1779,7 +1801,7 @@ ${emailInfo}`);
                             const emailRes = await fetch('/api/email/send-notification', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine })
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
                             });
                             if (!emailRes.ok) {
                                 const errBody = await emailRes.json().catch(() => ({}));
