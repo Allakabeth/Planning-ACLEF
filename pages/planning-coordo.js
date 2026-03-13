@@ -1661,8 +1661,8 @@ ${emailInfo}`);
 
                         // Formateurs ajoutés (dans UI mais pas en DB)
                         formateursActuels.forEach(id => {
-                            formateursModifies.add(id);
                             if (!formateursDB.includes(id)) {
+                                formateursModifies.add(id);
                                 if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
                                 detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'ajout', lieu: lieuNomUI });
                             }
@@ -1670,8 +1670,8 @@ ${emailInfo}`);
 
                         // Formateurs retirés (en DB mais plus dans UI)
                         formateursDB.forEach(id => {
-                            formateursModifies.add(id);
                             if (!formateursActuels.includes(id)) {
+                                formateursModifies.add(id);
                                 if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
                                 detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'retrait', lieu: lieuNomDB });
                             }
