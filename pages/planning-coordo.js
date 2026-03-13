@@ -1639,9 +1639,6 @@ ${emailInfo}`);
         // Comparer avec l'état en cours d'édition
         jours.forEach((jour, dayIndex) => {
             (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
-                const lieuObj = lieux[lieuIndex];
-                const lieuNom = lieuObj?.nom || `Lieu ${lieuIndex}`;
-
                 ['Matin', 'AM'].forEach((creneau) => {
                     const key = `${dayIndex}-${lieuIndex}-${creneau}`;
                     const keyDB = `${jour}-${lieuIndex}-${creneau === 'Matin' ? 'matin' : 'AM'}`;
@@ -1649,6 +1646,12 @@ ${emailInfo}`);
                     const formateursActuels = (formateursParCase[key] || []).filter(id => id !== "");
                     const planningDB = planningActuelMap[keyDB];
                     const formateursDB = planningDB?.formateurs_ids || [];
+
+                    // Résoudre le nom du lieu depuis le lieu_id (UI et DB)
+                    const lieuIdUI = lieuxSelectionnes[key];
+                    const lieuNomUI = lieux.find(l => l.id === lieuIdUI)?.nom || `Lieu ${lieuIndex}`;
+                    const lieuIdDB = planningDB?.lieu_id;
+                    const lieuNomDB = lieux.find(l => l.id === lieuIdDB)?.nom || lieuNomUI;
 
                     // Comparer les listes de formateurs
                     const sontDifferents = JSON.stringify(formateursActuels.sort()) !== JSON.stringify(formateursDB.sort());
@@ -1661,7 +1664,7 @@ ${emailInfo}`);
                             formateursModifies.add(id);
                             if (!formateursDB.includes(id)) {
                                 if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
-                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'ajout', lieu: lieuNom });
+                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'ajout', lieu: lieuNomUI });
                             }
                         });
 
@@ -1670,7 +1673,7 @@ ${emailInfo}`);
                             formateursModifies.add(id);
                             if (!formateursActuels.includes(id)) {
                                 if (!detailsParFormateur[id]) detailsParFormateur[id] = [];
-                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'retrait', lieu: lieuNom });
+                                detailsParFormateur[id].push({ jour, creneau: creneauLabel, type: 'retrait', lieu: lieuNomDB });
                             }
                         });
                     }
