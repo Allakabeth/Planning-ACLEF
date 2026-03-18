@@ -5,29 +5,29 @@ import Head from 'next/head'
 // Definitions des questions par type de questionnaire
 const QUESTIONS = {
   satisfaction: [
-    { id: 1, text: "La formation vous a plu ?", type: 'choix3', audio: "Êtes-vous satisfait ou satisfaite de la formation ?" },
-    { id: 2, text: "La formation était comme vous voulez ?", type: 'choix3', audio: "La formation, elle était comme vous voulez ?" },
-    { id: 3, text: "Vous avez appris de nouvelles choses ?", type: 'choix3', audio: "Vous avez appris de nouvelles choses pendant la formation ?" },
-    { id: 4, text: "Content de la durée de la formation ?", type: 'choix3', audio: "Vous êtes content de la durée de la formation ?" },
-    { id: 5, text: "Les formateurs se sont adaptés à vos besoins ?", type: 'choix3', audio: "Les formateurs se sont adaptés à vos besoins ?" },
-    { id: 6, text: "Les formateurs ont bien expliqué ?", type: 'choix3', audio: "Les formateurs ont bien expliqué ?" },
-    { id: 7, text: "Les salles et le matériel étaient bien ?", type: 'choix3', audio: "Les salles et le matériel, ordinateur, téléphone, étaient adaptés pour travailler ?" },
-    { id: 8, text: "La formation vous aide pour vos projets ?", type: 'choix3', audio: "Grâce à la formation, vous pouvez avancer dans vos projets ? Travail, formation, démarches ?" },
-    { id: 9, text: "Aujourd'hui, vous êtes :", type: 'situation', audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
-    { id: 10, text: "Quelque chose à nous dire ?", type: 'vocal', audio: "Avez-vous quelque chose à nous dire pour améliorer la formation ? Appuyez sur le bouton rouge pour enregistrer votre message." }
+    { id: 1, text: "La formation vous a plu ?", type: 'choix3', illustration: "📚", audio: "Êtes-vous satisfait ou satisfaite de la formation ?" },
+    { id: 2, text: "La formation était comme vous voulez ?", type: 'choix3', illustration: "🎯", audio: "La formation, elle était comme vous voulez ?" },
+    { id: 3, text: "Vous avez appris de nouvelles choses ?", type: 'choix3', illustration: "💡", audio: "Vous avez appris de nouvelles choses pendant la formation ?" },
+    { id: 4, text: "Content de la durée de la formation ?", type: 'choix3', illustration: "⏰", audio: "Vous êtes content de la durée de la formation ?" },
+    { id: 5, text: "Les formateurs se sont adaptés à vos besoins ?", type: 'choix3', illustration: "🤝", audio: "Les formateurs se sont adaptés à vos besoins ?" },
+    { id: 6, text: "Les formateurs ont bien expliqué ?", type: 'choix3', illustration: "🗣️", audio: "Les formateurs ont bien expliqué ?" },
+    { id: 7, text: "Les salles et le matériel étaient bien ?", type: 'choix3', illustration: "🏫", audio: "Les salles et le matériel, ordinateur, téléphone, étaient adaptés pour travailler ?" },
+    { id: 8, text: "La formation vous aide pour vos projets ?", type: 'choix3', illustration: "🚀", audio: "Grâce à la formation, vous pouvez avancer dans vos projets ? Travail, formation, démarches ?" },
+    { id: 9, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
+    { id: 10, text: "Quelque chose à nous dire ?", type: 'vocal', illustration: "💬", audio: "Avez-vous quelque chose à nous dire pour améliorer la formation ? Appuyez sur le bouton rouge pour enregistrer votre message." }
   ],
   suivi_3mois: [
-    { id: 1, text: "Aujourd'hui, vous êtes :", type: 'situation', audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
-    { id: 2, text: "Quelle formation ?", type: 'vocal', condition: { questionId: 1, value: 'formation' }, audio: "Vous êtes en formation. Quelle formation ? Dites-le avec le bouton rouge." },
-    { id: 3, text: "Vous faites quoi comme travail ?", type: 'vocal', condition: { questionId: 1, value: 'emploi' }, audio: "Vous travaillez. Vous faites quoi ? Dites-le avec le bouton rouge." },
-    { id: 4, text: "La formation ACLEF vous a aidé ?", type: 'choix3', audio: "La formation à l'ACLEF vous a aidé ?" },
-    { id: 5, text: "Vous avez un projet ?", type: 'choix3', audio: "Vous avez un projet ?" },
-    { id: 6, text: "Quelque chose à nous dire ?", type: 'vocal', audio: "Avez-vous quelque chose à nous dire ? Appuyez sur le bouton rouge pour enregistrer votre message." }
+    { id: 1, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
+    { id: 2, text: "Quelle formation ?", type: 'vocal', illustration: "🎓", condition: { questionId: 1, value: 'formation' }, audio: "Vous êtes en formation. Quelle formation ? Dites-le avec le bouton rouge." },
+    { id: 3, text: "Vous faites quoi comme travail ?", type: 'vocal', illustration: "💼", condition: { questionId: 1, value: 'emploi' }, audio: "Vous travaillez. Vous faites quoi ? Dites-le avec le bouton rouge." },
+    { id: 4, text: "La formation ACLEF vous a aidé ?", type: 'choix3', illustration: "💪", audio: "La formation à l'ACLEF vous a aidé ?" },
+    { id: 5, text: "Vous avez un projet ?", type: 'choix3', illustration: "🌟", audio: "Vous avez un projet ?" },
+    { id: 6, text: "Quelque chose à nous dire ?", type: 'vocal', illustration: "💬", audio: "Avez-vous quelque chose à nous dire ? Appuyez sur le bouton rouge pour enregistrer votre message." }
   ],
   suivi_6mois: [
-    { id: 1, text: "Aujourd'hui, vous êtes :", type: 'situation', audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
-    { id: 2, text: "Quelle formation ?", type: 'vocal', condition: { questionId: 1, value: 'formation' }, audio: "Vous êtes en formation. Quelle formation ? Dites-le avec le bouton rouge." },
-    { id: 3, text: "Vous faites quoi comme travail ?", type: 'vocal', condition: { questionId: 1, value: 'emploi' }, audio: "Vous travaillez. Vous faites quoi ? Dites-le avec le bouton rouge." },
+    { id: 1, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
+    { id: 2, text: "Quelle formation ?", type: 'vocal', illustration: "🎓", condition: { questionId: 1, value: 'formation' }, audio: "Vous êtes en formation. Quelle formation ? Dites-le avec le bouton rouge." },
+    { id: 3, text: "Vous faites quoi comme travail ?", type: 'vocal', illustration: "💼", condition: { questionId: 1, value: 'emploi' }, audio: "Vous travaillez. Vous faites quoi ? Dites-le avec le bouton rouge." },
     { id: 4, text: "La formation ACLEF vous a aidé ?", type: 'choix3', audio: "La formation à l'ACLEF vous a aidé ?" },
     { id: 5, text: "Vous avez un projet ?", type: 'choix3', audio: "Vous avez un projet ?" },
     { id: 6, text: "Quelque chose à nous dire ?", type: 'vocal', audio: "Avez-vous quelque chose à nous dire ? Appuyez sur le bouton rouge pour enregistrer votre message." }
@@ -97,7 +97,7 @@ export default function QuestionnairePage() {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(questionActuelle.audio || questionActuelle.text)
       utterance.lang = 'fr-FR'
-      utterance.rate = 0.85
+      utterance.rate = 0.8
       utterance.pitch = 1
       window.speechSynthesis.speak(utterance)
     }
@@ -143,16 +143,26 @@ export default function QuestionnairePage() {
     }
   }
 
-  // Selectionner une reponse (choix3 ou situation)
+  // Lire la question automatiquement quand elle change
+  useEffect(() => {
+    if (!questionActuelle) return
+    // Petit delai pour laisser l'ecran se mettre a jour
+    const timer = setTimeout(() => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+        const utterance = new SpeechSynthesisUtterance(questionActuelle.audio || questionActuelle.text)
+        utterance.lang = 'fr-FR'
+        utterance.rate = 0.8
+        utterance.pitch = 1
+        window.speechSynthesis.speak(utterance)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [questionIndex, questionActuelle])
+
+  // Selectionner une reponse (choix3 ou situation) - pas d'auto-avance
   function selectionnerReponse(valeur) {
     setReponses(prev => ({ ...prev, [questionActuelle.id]: valeur }))
-    // Auto-avancer apres un court delai
-    setTimeout(() => {
-      if (!isLastQuestion) {
-        setQuestionIndex(prev => prev + 1)
-        setAudioURL(null)
-      }
-    }, 400)
   }
 
   // Navigation
@@ -333,7 +343,12 @@ export default function QuestionnairePage() {
           </button>
         </div>
 
-        {/* Texte de la question */}
+        {/* Illustration + Texte de la question */}
+        {questionActuelle.illustration && (
+          <div style={{ fontSize: '56px', marginBottom: '12px' }}>
+            {questionActuelle.illustration}
+          </div>
+        )}
         <h2 style={{
           fontSize: '24px',
           color: '#1e293b',
