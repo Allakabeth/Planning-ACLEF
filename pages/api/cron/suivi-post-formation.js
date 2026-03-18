@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   // Charger tous les suivis non termines avec infos apprenant et questionnaires
   const { data: suivis, error } = await supabaseAdmin
     .from('suivi_post_formation')
-    .select('*, apprenant:apprenant_id (prenom, nom, telephone), quest_sat:satisfaction_questionnaire_id (id, token, statut), quest_3m:suivi_3mois_questionnaire_id (id, token, statut), quest_6m:suivi_6mois_questionnaire_id (id, token, statut)')
+    .select('*, apprenant:apprenant_id (prenom, nom, telephone), quest_sat:satisfaction_questionnaire_id (id, token, short_code, statut), quest_3m:suivi_3mois_questionnaire_id (id, token, short_code, statut), quest_6m:suivi_6mois_questionnaire_id (id, token, short_code, statut)')
 
   if (error) {
     return res.status(500).json({ error: error.message })
@@ -37,8 +37,8 @@ export default async function handler(req, res) {
       actions.push({ type: 'auto', msg: nomComplet + ' : satisfaction remplie' })
     }
     // Envoyer SMS satisfaction
-    else if (s.satisfaction_statut === 'a_envoyer' && tel && s.quest_sat?.token) {
-      const lien = baseUrl + '/questionnaire/' + s.quest_sat.token
+    else if (s.satisfaction_statut === 'a_envoyer' && tel && s.quest_sat?.short_code) {
+      const lien = baseUrl + '/q/' + s.quest_sat.short_code
       const msg = genererMessageSMS(prenom, lien, 'satisfaction')
       const result = await envoyerSMS(tel, msg)
       if (result.success) {
@@ -53,8 +53,8 @@ export default async function handler(req, res) {
     else if (s.satisfaction_statut === 'envoye') {
       const envoi = new Date(s.satisfaction_date_envoi || s.date_sortie)
       const jours = Math.floor((today - envoi) / (1000 * 60 * 60 * 24))
-      if (jours >= 7 && tel && s.quest_sat?.token) {
-        const lien = baseUrl + '/questionnaire/' + s.quest_sat.token
+      if (jours >= 7 && tel && s.quest_sat?.short_code) {
+        const lien = baseUrl + '/q/' + s.quest_sat.short_code
         const msg = genererMessageSMS(prenom, lien, 'relance_satisfaction')
         const result = await envoyerSMS(tel, msg)
         if (result.success) {
@@ -85,8 +85,8 @@ export default async function handler(req, res) {
     else if (s.suivi_3mois_statut === 'a_venir' && s.suivi_3mois_date <= todayStr) {
       updates.suivi_3mois_statut = 'a_envoyer'
     }
-    else if (s.suivi_3mois_statut === 'a_envoyer' && tel && s.quest_3m?.token) {
-      const lien = baseUrl + '/questionnaire/' + s.quest_3m.token
+    else if (s.suivi_3mois_statut === 'a_envoyer' && tel && s.quest_3m?.short_code) {
+      const lien = baseUrl + '/q/' + s.quest_3m.short_code
       const msg = genererMessageSMS(prenom, lien, 'suivi_3mois')
       const result = await envoyerSMS(tel, msg)
       if (result.success) {
@@ -99,8 +99,8 @@ export default async function handler(req, res) {
       if (jours >= 14) {
         updates.suivi_3mois_statut = 'appeler'
         actions.push({ type: 'appeler', msg: nomComplet + ' : suivi 3 mois sans reponse -> APPELER' })
-      } else if (jours >= 7 && tel && s.quest_3m?.token) {
-        const lien = baseUrl + '/questionnaire/' + s.quest_3m.token
+      } else if (jours >= 7 && tel && s.quest_3m?.short_code) {
+        const lien = baseUrl + '/q/' + s.quest_3m.short_code
         const msg = genererMessageSMS(prenom, lien, 'relance')
         const result = await envoyerSMS(tel, msg)
         if (result.success) {
@@ -125,8 +125,8 @@ export default async function handler(req, res) {
     else if (s.suivi_6mois_statut === 'a_venir' && s.suivi_6mois_date <= todayStr) {
       updates.suivi_6mois_statut = 'a_envoyer'
     }
-    else if (s.suivi_6mois_statut === 'a_envoyer' && tel && s.quest_6m?.token) {
-      const lien = baseUrl + '/questionnaire/' + s.quest_6m.token
+    else if (s.suivi_6mois_statut === 'a_envoyer' && tel && s.quest_6m?.short_code) {
+      const lien = baseUrl + '/q/' + s.quest_6m.short_code
       const msg = genererMessageSMS(prenom, lien, 'suivi_6mois')
       const result = await envoyerSMS(tel, msg)
       if (result.success) {
@@ -139,8 +139,8 @@ export default async function handler(req, res) {
       if (jours >= 14) {
         updates.suivi_6mois_statut = 'appeler'
         actions.push({ type: 'appeler', msg: nomComplet + ' : suivi 6 mois sans reponse -> APPELER' })
-      } else if (jours >= 7 && tel && s.quest_6m?.token) {
-        const lien = baseUrl + '/questionnaire/' + s.quest_6m.token
+      } else if (jours >= 7 && tel && s.quest_6m?.short_code) {
+        const lien = baseUrl + '/q/' + s.quest_6m.short_code
         const msg = genererMessageSMS(prenom, lien, 'relance')
         const result = await envoyerSMS(tel, msg)
         if (result.success) {

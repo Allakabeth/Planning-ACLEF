@@ -7,12 +7,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Token manquant' })
   }
 
-  // GET - Charger le questionnaire
+  // GET - Charger le questionnaire (cherche par short_code ou token)
   if (req.method === 'GET') {
+    const isShortCode = token.length <= 8
+    const column = isShortCode ? 'short_code' : 'token'
     const { data: questionnaire, error } = await supabaseAdmin
       .from('questionnaires')
       .select('id, type, statut, apprenant_id, reponses')
-      .eq('token', token)
+      .eq(column, token)
       .single()
 
     if (error || !questionnaire) {
@@ -54,10 +56,12 @@ export default async function handler(req, res) {
     }
 
     // Verifier que le questionnaire existe et n'est pas deja complete
+    const isShortCode = token.length <= 8
+    const column = isShortCode ? 'short_code' : 'token'
     const { data: questionnaire, error: fetchError } = await supabaseAdmin
       .from('questionnaires')
       .select('id, statut, type')
-      .eq('token', token)
+      .eq(column, token)
       .single()
 
     if (fetchError || !questionnaire) {

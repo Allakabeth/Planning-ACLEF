@@ -62,6 +62,7 @@ export default async function handler(req, res) {
 
       const questIds = {}
       for (const q of questionnairesACreer) {
+        const shortCode = crypto.randomUUID().substring(0, 6)
         const { data, error } = await supabaseAdmin
           .from('questionnaires')
           .insert({
@@ -69,6 +70,7 @@ export default async function handler(req, res) {
             apprenant_id,
             parcours_id,
             token: q.token,
+            short_code: shortCode,
             statut: 'en_attente'
           })
           .select('id')

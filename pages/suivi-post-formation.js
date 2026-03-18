@@ -23,9 +23,9 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
             .select(`
                 *,
                 apprenant:apprenant_id (id, prenom, nom),
-                quest_sat:satisfaction_questionnaire_id (id, token, statut, reponses),
-                quest_3mois:suivi_3mois_questionnaire_id (id, token, statut, reponses),
-                quest_6mois:suivi_6mois_questionnaire_id (id, token, statut, reponses)
+                quest_sat:satisfaction_questionnaire_id (id, token, short_code, statut, reponses),
+                quest_3mois:suivi_3mois_questionnaire_id (id, token, short_code, statut, reponses),
+                quest_6mois:suivi_6mois_questionnaire_id (id, token, short_code, statut, reponses)
             `)
             .order('created_at', { ascending: false })
 
@@ -36,7 +36,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     // Ouvrir WhatsApp avec message pre-ecrit
     const envoyerWhatsApp = (prenom, token, typeMsg) => {
         const baseUrl = window.location.origin
-        const lien = baseUrl + '/questionnaire/' + token
+        const lien = baseUrl + '/q/' + token
         let msg = ''
         if (typeMsg === 'satisfaction') {
             msg = 'Bonjour ' + prenom + ' !\n\nL\'ACLEF aimerait avoir votre avis sur la formation.\n\nCliquez ici pour repondre (2 minutes) :\n' + lien + '\n\nMerci !'
@@ -147,7 +147,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     const renderCelluleSuivi = (s, statut, date, questionnaire, champ, typeMsg) => {
         const badge = getStatutBadge(statut)
         const prenom = s.apprenant?.prenom || ''
-        const token = questionnaire?.token
+        const token = questionnaire?.short_code || questionnaire?.token
 
         return (
             <td style={tdStyle}>
