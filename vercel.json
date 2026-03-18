@@ -7,6 +7,10 @@
     {
       "path": "/api/notifications/anniversaires",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/suivi-post-formation",
+      "schedule": "0 7 * * *"
     }
   ]
 }
