@@ -53,6 +53,10 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
     const [showConfirmation, setShowConfirmation] = useState(false)
     const [actionEnCours, setActionEnCours] = useState(null)
 
+    // État pour le modal questionnaire satisfaction post-sortie
+    const [showQuestionSatisfaction, setShowQuestionSatisfaction] = useState(false)
+    const [apprenantSorti, setApprenantSorti] = useState(null)
+
     // États pour confirmation doublon
     const [showConfirmationDoublon, setShowConfirmationDoublon] = useState(false)
     const [doublonDetecte, setDoublonDetecte] = useState(null)
@@ -573,13 +577,29 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 .eq('id', apprenantEnModification.id)
             
             if (error) throw error
-            
+
+            // Si le statut passe a termine ou abandonne, creer le suivi post-formation
+            const nouveauStatut = apprenantEnModification.statut_formation
+            if (nouveauStatut === 'termine' || nouveauStatut === 'abandonne') {
+                try {
+                    await fetch('/api/admin/terminer-parcours', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apprenant_id: apprenantEnModification.id })
+                    })
+                } catch (e) { /* suivi est un bonus, ne pas bloquer */ }
+
+                // Poser la question satisfaction
+                setApprenantSorti(apprenantEnModification)
+                setShowQuestionSatisfaction(true)
+            }
+
             setMessage('Apprenant modifié avec succès !')
             setTimeout(() => setMessage(''), 4000)
             setApprenantEnModification(null)
             setShowModifierForm(false)
             await fetchApprenants()
-            
+
         } catch (error) {
             setMessage(`Erreur : ${error.message}`)
             setTimeout(() => setMessage(''), 4000)
@@ -2618,6 +2638,44 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 </div>
             )}
             </div>
+
+            {/* Modal Questionnaire de satisfaction rempli ? */}
+            {showQuestionSatisfaction && apprenantSorti && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+                    <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '32px', maxWidth: '450px', width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+                        <h3 style={{ margin: '0 0 8px', fontSize: '20px', color: '#1e293b' }}>
+                            {apprenantSorti.prenom} {apprenantSorti.nom}
+                        </h3>
+                        <p style={{ fontSize: '16px', color: '#475569', marginBottom: '24px' }}>
+                            Le questionnaire de satisfaction a-t-il ete rempli ?
+                        </p>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                            <button
+                                onClick={() => {
+                                    setShowQuestionSatisfaction(false)
+                                    setApprenantSorti(null)
+                                    router.push('/suivi-post-formation')
+                                }}
+                                style={{ padding: '14px 32px', fontSize: '16px', fontWeight: '700', border: 'none', borderRadius: '12px', backgroundColor: '#10b981', color: 'white', cursor: 'pointer' }}
+                            >
+                                OUI - Saisir les reponses
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowQuestionSatisfaction(false)
+                                    setApprenantSorti(null)
+                                    setMessage('Suivi cree - un SMS sera envoye automatiquement')
+                                    setTimeout(() => setMessage(''), 5000)
+                                }}
+                                style={{ padding: '14px 32px', fontSize: '16px', fontWeight: '700', border: '2px solid #e2e8f0', borderRadius: '12px', backgroundColor: 'white', color: '#475569', cursor: 'pointer' }}
+                            >
+                                NON - Envoyer par SMS
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     )
 }
