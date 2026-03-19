@@ -101,6 +101,16 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
         await fetchSuivis()
     }
 
+    // Toggle telephone hors service
+    const toggleTelephoneHS = async (suiviId, currentValue) => {
+        await supabase.from('suivi_post_formation')
+            .update({ telephone_hs: !currentValue, updated_at: new Date().toISOString() })
+            .eq('id', suiviId)
+        setMessage(!currentValue ? 'Telephone marque hors service' : 'Telephone marque fonctionnel')
+        setTimeout(() => setMessage(''), 3000)
+        await fetchSuivis()
+    }
+
     // Style badge selon statut
     const getStatutBadge = (statut) => {
         const styles = {
@@ -307,9 +317,24 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                                 {suivisFiltres.map(s => (
                                     <tr key={s.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                                         <td style={tdStyle}>
-                                            <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>
+                                            <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {s.apprenant?.prenom} {s.apprenant?.nom}
+                                                {s.telephone_hs && (
+                                                    <span title="Telephone hors service" style={{ fontSize: '12px', color: '#ef4444' }}>Tel HS</span>
+                                                )}
                                             </div>
+                                            <button
+                                                onClick={() => toggleTelephoneHS(s.id, s.telephone_hs)}
+                                                disabled={!canEdit}
+                                                style={{
+                                                    marginTop: '4px', padding: '2px 6px', fontSize: '10px', fontWeight: '600',
+                                                    border: '1px solid #e2e8f0', borderRadius: '4px', cursor: canEdit ? 'pointer' : 'not-allowed',
+                                                    backgroundColor: s.telephone_hs ? '#fee2e2' : 'white',
+                                                    color: s.telephone_hs ? '#991b1b' : '#64748b'
+                                                }}
+                                            >
+                                                {s.telephone_hs ? 'Tel HS - reactiver' : 'Signaler tel HS'}
+                                            </button>
                                         </td>
                                         <td style={tdStyle}>
                                             <span style={{ fontSize: '13px', color: '#64748b' }}>{formatDate(s.date_sortie)}</span>

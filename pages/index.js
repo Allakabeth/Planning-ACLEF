@@ -508,6 +508,7 @@ function Dashboard() {
     { title: "Gestion Lieux", icon: "📍", href: "/gestion-lieux" },
     { title: "Gestion Présences Formateur", icon: "📊", href: "/gestion-absences-formateur" },
     { title: "Suivi Post-Formation", icon: "📋", href: "/suivi-post-formation" },
+    { title: "Resultats Questionnaires", icon: "📈", href: "/resultats-questionnaires" },
     { title: "Comparaison Dates Excel", icon: "📊", href: "/comparaison-dates-excel" }
   ]
 

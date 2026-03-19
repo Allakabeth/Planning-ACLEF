@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     const updates = {}
     const prenom = s.apprenant?.prenom || 'Apprenant'
     const nom = s.apprenant?.nom || ''
-    const tel = s.apprenant?.telephone
+    const tel = s.telephone_hs ? null : s.apprenant?.telephone
     const nomComplet = prenom + ' ' + nom
 
     // --- SATISFACTION ---
