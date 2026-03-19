@@ -5,16 +5,16 @@ import Head from 'next/head'
 // Definitions des questions par type de questionnaire
 const QUESTIONS = {
   satisfaction: [
-    { id: 1, text: "La formation vous a plu ?", type: 'choix3', illustration: "📚", audio: "Êtes-vous satisfait ou satisfaite de la formation ?" },
-    { id: 2, text: "La formation était comme vous voulez ?", type: 'choix3', illustration: "🎯", audio: "La formation, elle était comme vous voulez ?" },
-    { id: 3, text: "Vous avez appris de nouvelles choses ?", type: 'choix3', illustration: "💡", audio: "Vous avez appris de nouvelles choses pendant la formation ?" },
-    { id: 4, text: "Content de la durée de la formation ?", type: 'choix3', illustration: "⏰", audio: "Vous êtes content de la durée de la formation ?" },
+    { id: 1, text: "La formation vous a plu ?", type: 'choix3', illustration: "📚", audio: "La formation vous a plu ?" },
+    { id: 2, text: "La formation était comme vous voulez ?", type: 'choix3', illustration: "🎯", audio: "La formation était comme vous voulez ?" },
+    { id: 3, text: "Vous avez appris de nouvelles choses ?", type: 'choix3', illustration: "💡", audio: "Vous avez appris de nouvelles choses ?" },
+    { id: 4, text: "Content de la durée de la formation ?", type: 'choix3', illustration: "⏰", audio: "Êtes-vous content, de la durée de la formation ?" },
     { id: 5, text: "Les formateurs se sont adaptés à vos besoins ?", type: 'choix3', illustration: "🤝", audio: "Les formateurs se sont adaptés à vos besoins ?" },
     { id: 6, text: "Les formateurs ont bien expliqué ?", type: 'choix3', illustration: "🗣️", audio: "Les formateurs ont bien expliqué ?" },
-    { id: 7, text: "Les salles et le matériel étaient bien ?", type: 'choix3', illustration: "🏫", audio: "Les salles et le matériel, ordinateur, téléphone, étaient adaptés pour travailler ?" },
-    { id: 8, text: "La formation vous aide pour vos projets ?", type: 'choix3', illustration: "🚀", audio: "Grâce à la formation, vous pouvez avancer dans vos projets ? Travail, formation, démarches ?" },
-    { id: 9, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
-    { id: 10, text: "Quelque chose à nous dire ?", type: 'vocal', illustration: "💬", audio: "Avez-vous quelque chose à nous dire pour améliorer la formation ? Appuyez sur le bouton rouge pour enregistrer votre message." }
+    { id: 7, text: "Les salles et le matériel étaient bien ?", type: 'choix3', illustration: "🏫", audio: "Les salles et le matériel étaient bien ?" },
+    { id: 8, text: "La formation vous aide pour vos projets ?", type: 'choix3', illustration: "🚀", audio: "La formation vous aide pour vos projets ?" },
+    { id: 9, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, vous êtes ?" },
+    { id: 10, text: "Quelque chose à nous dire ?", type: 'vocal', illustration: "💬", audio: "Quelque chose à nous dire ? Appuyez sur le bouton rouge pour enregistrer votre message." }
   ],
   suivi_3mois: [
     { id: 1, text: "Aujourd'hui, vous êtes :", type: 'situation', illustration: "👤", audio: "Aujourd'hui, qu'est-ce que vous faites ?" },
