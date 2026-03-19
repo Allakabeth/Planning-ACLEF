@@ -73,6 +73,9 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     const [modalAppel, setModalAppel] = useState(null)
     const [modalReponses, setModalReponses] = useState(null)
 
+    // --- SALARIES (pour menu deroulant appel) ---
+    const [salaries, setSalaries] = useState([])
+
     // --- ETAT RESULTATS ---
     const [dateDebut, setDateDebut] = useState('')
     const [dateFin, setDateFin] = useState('')
@@ -80,7 +83,15 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     const [resultats, setResultats] = useState(null)
     const [loadingResultats, setLoadingResultats] = useState(false)
 
-    useEffect(() => { fetchSuivis() }, [])
+    useEffect(() => {
+        fetchSuivis()
+        fetchSalaries()
+    }, [])
+
+    const fetchSalaries = async () => {
+        const { data } = await supabase.from('users').select('prenom, nom').eq('role', 'salarié').order('prenom')
+        if (data) setSalaries(data)
+    }
 
     // ========== FONCTIONS SUIVI ==========
 
@@ -208,9 +219,12 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
 
     const pct = (n, t) => t > 0 ? (n / t * 100).toFixed(1) : '0.0'
 
-    // Export PDF via impression navigateur
+    // Export PDF via API serveur
     const exporterPDF = () => {
-        window.print()
+        const params = new URLSearchParams({ type: ongletResultat })
+        if (dateDebut) params.set('dateDebut', dateDebut)
+        if (dateFin) params.set('dateFin', dateFin)
+        window.open('/api/suivi/export-pdf?' + params.toString(), '_blank')
     }
 
     // ========== RENDU CELLULE SUIVI ==========
@@ -438,7 +452,10 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <div style={{ display: 'flex', gap: '12px' }}>
                                 <div style={{ flex: 1 }}><label style={labelStyle}>Date</label><input type="date" value={modalAppel.dateAppel} onChange={(e) => setModalAppel({ ...modalAppel, dateAppel: e.target.value })} style={inputStyle} /></div>
-                                <div style={{ flex: 1 }}><label style={labelStyle}>Appele par</label><input type="text" value={modalAppel.appelePar} onChange={(e) => setModalAppel({ ...modalAppel, appelePar: e.target.value })} placeholder="Prenom" style={inputStyle} /></div>
+                                <div style={{ flex: 1 }}><label style={labelStyle}>Appele par</label><select value={modalAppel.appelePar} onChange={(e) => setModalAppel({ ...modalAppel, appelePar: e.target.value })} style={inputStyle}>
+                                    <option value="">-- Choisir --</option>
+                                    {salaries.map(s => <option key={s.prenom + s.nom} value={s.prenom + ' ' + s.nom}>{s.prenom} {s.nom}</option>)}
+                                </select></div>
                             </div>
                             <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: '16px' }}>
                                 <label style={{ ...labelStyle, fontSize: '15px', marginBottom: '12px' }}>Reponses de l'apprenant</label>
@@ -499,14 +516,6 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                 </div>
             )}
 
-            {/* CSS impression PDF */}
-            <style jsx global>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    #resultats-print, #resultats-print * { visibility: visible; }
-                    #resultats-print { position: absolute; left: 0; top: 0; width: 100%; }
-                }
-            `}</style>
         </div>
     )
 }
