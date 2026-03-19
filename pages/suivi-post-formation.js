@@ -172,7 +172,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
 
     const fetchResultats = async () => {
         setLoadingResultats(true)
-        let query = supabase.from('suivi_post_formation').select('*')
+        let query = supabase.from('suivi_post_formation').select('*, apprenant:apprenant_id (prenom, nom)')
         if (dateDebut) query = query.gte('date_sortie', dateDebut)
         if (dateFin) query = query.lte('date_sortie', dateFin)
         const { data: suivisR } = await query
@@ -189,7 +189,12 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
         }
 
         const totalSuivis = suivisR.length
-        const totalRepondus = suivisR.filter(s => ['repondu', 'appel_effectue'].includes(s[statutField])).length
+        const nomsSuivis = suivisR.map(s => (s.apprenant?.prenom || '') + ' ' + (s.apprenant?.nom || '')).join('\n')
+        const suivisRepondus = suivisR.filter(s => ['repondu', 'appel_effectue'].includes(s[statutField]))
+        const totalRepondus = suivisRepondus.length
+        const nomsRepondus = suivisRepondus.map(s => (s.apprenant?.prenom || '') + ' ' + (s.apprenant?.nom || '')).join('\n')
+        const suivisNonRepondus = suivisR.filter(s => !['repondu', 'appel_effectue'].includes(s[statutField]))
+        const nomsNonRepondus = suivisNonRepondus.map(s => (s.apprenant?.prenom || '') + ' ' + (s.apprenant?.nom || '')).join('\n')
         const questions = QUESTIONS_ANALYSE[ongletResultat] || []
         const distributions = {}
 
@@ -213,7 +218,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
             }
         }
 
-        setResultats({ totalSuivis, totalRepondus, distributions })
+        setResultats({ totalSuivis, totalRepondus, distributions, nomsSuivis, nomsRepondus, nomsNonRepondus })
         setLoadingResultats(false)
     }
 
@@ -401,17 +406,18 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                             <div id="resultats-print" style={{ backgroundColor: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                                 {/* Cartes stats */}
                                 <div style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
-                                    <div style={{ flex: 1, padding: '20px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center' }}>
+                                    <div title={resultats.nomsSuivis} style={{ flex: 1, padding: '20px', backgroundColor: '#f1f5f9', borderRadius: '12px', textAlign: 'center', cursor: 'help' }}>
                                         <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>{resultats.totalSuivis}</div>
                                         <div style={{ fontSize: '13px', color: '#64748b' }}>Total apprenants</div>
                                     </div>
-                                    <div style={{ flex: 1, padding: '20px', backgroundColor: '#d1fae5', borderRadius: '12px', textAlign: 'center' }}>
+                                    <div title={resultats.nomsRepondus || 'Aucun'} style={{ flex: 1, padding: '20px', backgroundColor: '#d1fae5', borderRadius: '12px', textAlign: 'center', cursor: 'help' }}>
                                         <div style={{ fontSize: '32px', fontWeight: '700', color: '#065f46' }}>{resultats.totalRepondus}</div>
                                         <div style={{ fontSize: '13px', color: '#065f46' }}>Ont repondu</div>
                                     </div>
-                                    <div style={{ flex: 1, padding: '20px', backgroundColor: '#dbeafe', borderRadius: '12px', textAlign: 'center' }}>
+                                    <div title={resultats.nomsNonRepondus || 'Tous ont repondu'} style={{ flex: 1, padding: '20px', backgroundColor: '#dbeafe', borderRadius: '12px', textAlign: 'center', cursor: 'help' }}>
                                         <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e40af' }}>{pct(resultats.totalRepondus, resultats.totalSuivis)}%</div>
                                         <div style={{ fontSize: '13px', color: '#1e40af' }}>Taux de reponse</div>
+                                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>{resultats.totalSuivis - resultats.totalRepondus} non repondu(s)</div>
                                     </div>
                                 </div>
 
