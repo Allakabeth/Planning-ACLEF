@@ -3,6 +3,36 @@ import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabaseClient'
 import { withAuthAdmin } from '../components/withAuthAdmin'
 
+// Questions par type de questionnaire (meme contenu que la page questionnaire)
+const QUESTIONS = {
+    satisfaction: [
+        { id: 1, text: "La formation vous a plu ?", type: 'choix3' },
+        { id: 2, text: "La formation etait comme vous voulez ?", type: 'choix3' },
+        { id: 3, text: "Vous avez appris de nouvelles choses ?", type: 'choix3' },
+        { id: 4, text: "Content de la duree de la formation ?", type: 'choix3' },
+        { id: 5, text: "Les formateurs se sont adaptes a vos besoins ?", type: 'choix3' },
+        { id: 6, text: "Les formateurs ont bien explique ?", type: 'choix3' },
+        { id: 7, text: "Les salles et le materiel etaient bien ?", type: 'choix3' },
+        { id: 8, text: "La formation vous aide pour vos projets ?", type: 'choix3' },
+        { id: 9, text: "Aujourd'hui, vous etes :", type: 'situation' },
+        { id: 10, text: "Quelque chose a nous dire ?", type: 'libre' }
+    ],
+    suivi_3mois: [
+        { id: 1, text: "Aujourd'hui, vous etes :", type: 'situation' },
+        { id: 2, text: "Quelle formation / quel travail ?", type: 'libre' },
+        { id: 3, text: "La formation ACLEF vous a aide ?", type: 'choix3' },
+        { id: 4, text: "Vous avez un projet ?", type: 'choix3' },
+        { id: 5, text: "Quelque chose a nous dire ?", type: 'libre' }
+    ],
+    suivi_6mois: [
+        { id: 1, text: "Aujourd'hui, vous etes :", type: 'situation' },
+        { id: 2, text: "Quelle formation / quel travail ?", type: 'libre' },
+        { id: 3, text: "La formation ACLEF vous a aide ?", type: 'choix3' },
+        { id: 4, text: "Vous avez un projet ?", type: 'choix3' },
+        { id: 5, text: "Quelque chose a nous dire ?", type: 'libre' }
+    ]
+}
+
 function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
     const canEdit = priority === 1
@@ -11,7 +41,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
     const [isLoading, setIsLoading] = useState(true)
     const [message, setMessage] = useState('')
     const [filtre, setFiltre] = useState('tous')
-    const [modalAppel, setModalAppel] = useState(null) // {suiviId, champ, appelePar, dateAppel, notes}
+    const [modalAppel, setModalAppel] = useState(null) // {suiviId, champ, type, questionnaireId, appelePar, dateAppel, notes, reponses}
     const [modalReponses, setModalReponses] = useState(null)
 
     useEffect(() => { fetchSuivis() }, [])
@@ -33,7 +63,7 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
         setIsLoading(false)
     }
 
-    // Sauvegarder un appel telephonique
+    // Sauvegarder un appel telephonique avec les reponses au questionnaire
     const sauvegarderAppel = async () => {
         if (!modalAppel) return
         const updates = { updated_at: new Date().toISOString() }
@@ -44,6 +74,16 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
         updates[prefix + '_date_appel'] = modalAppel.dateAppel
 
         await supabase.from('suivi_post_formation').update(updates).eq('id', modalAppel.suiviId)
+
+        // Enregistrer les reponses dans le questionnaire (meme format que par SMS)
+        if (modalAppel.questionnaireId && modalAppel.reponses) {
+            await supabase.from('questionnaires').update({
+                reponses: modalAppel.reponses,
+                statut: 'complete',
+                date_reponse: new Date().toISOString()
+            }).eq('id', modalAppel.questionnaireId)
+        }
+
         setModalAppel(null)
         setMessage('Appel enregistre')
         setTimeout(() => setMessage(''), 3000)
@@ -143,13 +183,22 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                         {/* Bouton Saisir appel */}
                         {['appeler', 'envoye', 'relance_1', 'relance', 'a_envoyer'].includes(statut) && (
                             <button
-                                onClick={() => setModalAppel({
-                                    suiviId: s.id,
-                                    champ,
-                                    appelePar: user?.email || '',
-                                    dateAppel: formatDateInput(),
-                                    notes: ''
-                                })}
+                                onClick={() => {
+                                    const typeQ = champ === 'satisfaction' ? 'satisfaction' : champ === '3mois' ? 'suivi_3mois' : 'suivi_6mois'
+                                    const questions = QUESTIONS[typeQ] || []
+                                    const reponses = {}
+                                    questions.forEach(q => { reponses[q.id] = '' })
+                                    setModalAppel({
+                                        suiviId: s.id,
+                                        champ,
+                                        type: typeQ,
+                                        questionnaireId: questionnaire?.id || null,
+                                        appelePar: user?.email || '',
+                                        dateAppel: formatDateInput(),
+                                        notes: '',
+                                        reponses
+                                    })
+                                }}
                                 disabled={!canEdit}
                                 style={btnSmall(statut === 'appeler' ? '#ef4444' : '#f59e0b', canEdit)}
                             >
@@ -276,42 +325,106 @@ function SuiviPostFormation({ user, logout, inactivityTime, priority }) {
                 )}
             </div>
 
-            {/* Modal Saisie appel */}
+            {/* Modal Saisie appel avec questionnaire */}
             {modalAppel && (
                 <div style={overlayStyle}>
-                    <div style={{ ...modalStyle, maxWidth: '500px' }}>
+                    <div style={{ ...modalStyle, maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3 style={{ margin: '0 0 20px', fontSize: '18px', color: '#1e293b' }}>
                             Saisie d'appel telephonique
                         </h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Date et personne */}
                             <div style={{ display: 'flex', gap: '12px' }}>
                                 <div style={{ flex: 1 }}>
                                     <label style={labelStyle}>Date de l'appel</label>
-                                    <input
-                                        type="date"
-                                        value={modalAppel.dateAppel}
+                                    <input type="date" value={modalAppel.dateAppel}
                                         onChange={(e) => setModalAppel({ ...modalAppel, dateAppel: e.target.value })}
-                                        style={inputStyle}
-                                    />
+                                        style={inputStyle} />
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label style={labelStyle}>Appel effectue par</label>
-                                    <input
-                                        type="text"
-                                        value={modalAppel.appelePar}
+                                    <input type="text" value={modalAppel.appelePar}
                                         onChange={(e) => setModalAppel({ ...modalAppel, appelePar: e.target.value })}
-                                        placeholder="Prenom ou nom"
-                                        style={inputStyle}
-                                    />
+                                        placeholder="Prenom ou nom" style={inputStyle} />
                                 </div>
                             </div>
+
+                            {/* Questions du questionnaire */}
+                            <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: '16px' }}>
+                                <label style={{ ...labelStyle, fontSize: '15px', marginBottom: '12px' }}>Reponses de l'apprenant</label>
+                                {(QUESTIONS[modalAppel.type] || []).map(q => (
+                                    <div key={q.id} style={{ marginBottom: '14px', padding: '10px', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>
+                                            {q.id}. {q.text}
+                                        </div>
+                                        {q.type === 'choix3' && (
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                {[{ val: 'oui', label: 'OUI', bg: '#d1fae5', color: '#065f46' },
+                                                  { val: 'un_peu', label: 'UN PEU', bg: '#fef3c7', color: '#92400e' },
+                                                  { val: 'non', label: 'NON', bg: '#fee2e2', color: '#991b1b' }
+                                                ].map(opt => (
+                                                    <button key={opt.val}
+                                                        onClick={() => setModalAppel({
+                                                            ...modalAppel,
+                                                            reponses: { ...modalAppel.reponses, [q.id]: opt.val }
+                                                        })}
+                                                        style={{
+                                                            flex: 1, padding: '8px', border: modalAppel.reponses[q.id] === opt.val ? '2px solid ' + opt.color : '2px solid #e2e8f0',
+                                                            borderRadius: '8px', backgroundColor: modalAppel.reponses[q.id] === opt.val ? opt.bg : 'white',
+                                                            color: opt.color, fontWeight: '700', fontSize: '13px', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {q.type === 'situation' && (
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                {[{ val: 'formation', label: 'En formation' },
+                                                  { val: 'emploi', label: 'En emploi' },
+                                                  { val: 'recherche', label: 'En recherche' },
+                                                  { val: 'autre', label: 'Autre' }
+                                                ].map(opt => (
+                                                    <button key={opt.val}
+                                                        onClick={() => setModalAppel({
+                                                            ...modalAppel,
+                                                            reponses: { ...modalAppel.reponses, [q.id]: opt.val }
+                                                        })}
+                                                        style={{
+                                                            padding: '8px 12px', border: modalAppel.reponses[q.id] === opt.val ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                                                            borderRadius: '8px', backgroundColor: modalAppel.reponses[q.id] === opt.val ? '#dbeafe' : 'white',
+                                                            color: '#1e293b', fontWeight: '600', fontSize: '13px', cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {q.type === 'libre' && (
+                                            <textarea
+                                                value={modalAppel.reponses[q.id] || ''}
+                                                onChange={(e) => setModalAppel({
+                                                    ...modalAppel,
+                                                    reponses: { ...modalAppel.reponses, [q.id]: e.target.value }
+                                                })}
+                                                placeholder="Reponse de l'apprenant..."
+                                                style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
+                                            />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Commentaires libres */}
                             <div>
-                                <label style={labelStyle}>Reponses / Notes</label>
+                                <label style={labelStyle}>Commentaires</label>
                                 <textarea
                                     value={modalAppel.notes}
                                     onChange={(e) => setModalAppel({ ...modalAppel, notes: e.target.value })}
-                                    placeholder="Saisissez les reponses de l'apprenant et vos observations..."
-                                    style={{ ...inputStyle, minHeight: '150px', resize: 'vertical' }}
+                                    placeholder="Observations, remarques..."
+                                    style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
                                 />
                             </div>
                         </div>
