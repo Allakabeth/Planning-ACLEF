@@ -1544,6 +1544,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates);
 
             let emailInfo = '📧 Messages envoyés aux formateurs';
+            let testInfo = '';
             if (emailResult?.erreur) {
                 emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
             } else if (emailResult?.aucuneAffectation) {
@@ -1551,13 +1552,16 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             } else if (emailResult?.emailsEchoues > 0) {
                 emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
             } else if (emailResult?.emailsEnvoyes > 0) {
-                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées (espacées de 5s)`;
+                testInfo = emailResult.emailTestOk
+                    ? '\n🔔 Email-test envoyé : vérifiez votre boîte pour confirmer que les règles Outlook sont actives'
+                    : '\n⚠️ Email-test échoué : vérifiez les règles Outlook';
             }
 
             setMessage(`✅ Planning semaine ${semaine} validé et transmis !
 ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
-${emailInfo}`);
-            setTimeout(() => setMessage(''), 8000);
+${emailInfo}${testInfo}`);
+            setTimeout(() => setMessage(''), 12000);
 
         } catch (error) {
             console.error('Erreur lors de la validation:', error);
@@ -1595,6 +1599,7 @@ ${emailInfo}`);
 
             // 5. Envoyer messages seulement aux formateurs modifiés
             let emailInfo = 'Aucun formateur modifié';
+            let testInfo = '';
             if (formateursModifies.length > 0) {
                 const emailResult = await envoyerMessagesModifications(formateursModifies, semaine, weekDates, detailsModifs);
                 if (emailResult?.erreur) {
@@ -1604,14 +1609,17 @@ ${emailInfo}`);
                 } else if (emailResult?.emailsEchoues > 0) {
                     emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
                 } else if (emailResult?.emailsEnvoyes > 0) {
-                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées (espacées de 5s)`;
+                    testInfo = emailResult.emailTestOk
+                        ? '\n🔔 Email-test envoyé : vérifiez votre boîte pour confirmer que les règles Outlook sont actives'
+                        : '\n⚠️ Email-test échoué : vérifiez les règles Outlook';
                 }
             }
 
             setMessage(`✅ Modifications validées !
 ${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifié(s)
-${emailInfo}`);
-            setTimeout(() => setMessage(''), 8000);
+${emailInfo}${testInfo}`);
+            setTimeout(() => setMessage(''), 12000);
 
         } catch (error) {
             console.error('Erreur lors de la validation des modifications:', error);
@@ -1684,6 +1692,24 @@ ${emailInfo}`);
         return { ids: Array.from(formateursModifies), details: detailsParFormateur };
     };
 
+    // Délai entre chaque email pour éviter qu'Outlook désactive les règles de transfert
+    const delaiEntreEmails = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Envoi email-test de vérification des règles Outlook
+    const envoyerEmailTest = async (semaine) => {
+        try {
+            const emailRes = await fetch('/api/email/send-notification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ formateurNom: 'ADMIN', formateurPrenom: 'TEST', typeNotification: 'validation', semaine, details: 'Ceci est un email-test. Si vous recevez ce message, les règles Outlook sont actives.' })
+            });
+            return emailRes.ok;
+        } catch (err) {
+            console.error('[EMAIL-DEBUG] Erreur envoi email-test:', err);
+            return false;
+        }
+    };
+
     // Fonction envoi messages pour modifications
     const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates, detailsModifs) => {
         try {
@@ -1736,12 +1762,22 @@ ${emailInfo}`);
                     console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
                     emailsEchoues++;
                 }
+
+                // Attendre 5 secondes avant le prochain email
+                await delaiEntreEmails(5000);
+            }
+
+            // Envoyer email-test de vérification à la fin
+            let emailTestOk = false;
+            if (emailsEnvoyes > 0) {
+                await delaiEntreEmails(5000);
+                emailTestOk = await envoyerEmailTest(semaine);
             }
 
             if (emailsEnvoyes === 0 && emailsEchoues === 0) {
                 return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
             }
-            return { emailsEnvoyes, emailsEchoues };
+            return { emailsEnvoyes, emailsEchoues, emailTestOk };
         } catch (error) {
             console.error('Erreur envoi messages modifications:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
@@ -1817,12 +1853,23 @@ ${emailInfo}`);
                             console.error('[EMAIL-DEBUG] Exception email pour', formateur.prenom, formateur.nom, ':', emailErr);
                             emailsEchoues++;
                         }
+
+                        // Attendre 5 secondes avant le prochain email
+                        await delaiEntreEmails(5000);
                     } else {
                         console.warn('[EMAIL-DEBUG] Formateur non trouvé dans la liste pour id:', formateurId);
                     }
                 }
-                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
-                return { emailsEnvoyes, emailsEchoues };
+
+                // Envoyer email-test de vérification à la fin
+                let emailTestOk = false;
+                if (emailsEnvoyes > 0) {
+                    await delaiEntreEmails(5000);
+                    emailTestOk = await envoyerEmailTest(semaine);
+                }
+
+                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués, test: ' + emailTestOk);
+                return { emailsEnvoyes, emailsEchoues, emailTestOk };
             } else {
                 console.warn('[EMAIL-DEBUG] Aucune affectation trouvée - pas d\'emails envoyés');
                 return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
