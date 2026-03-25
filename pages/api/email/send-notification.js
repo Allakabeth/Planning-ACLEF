@@ -44,13 +44,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'formateurNom et formateurPrenom requis' });
   }
 
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFY_EMAIL, FORMATEURS_EMAILS } = process.env;
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, FORMATEURS_EMAILS } = process.env;
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !NOTIFY_EMAIL) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     return res.status(500).json({ error: 'Configuration SMTP manquante' });
   }
 
+  if (!FORMATEURS_EMAILS) {
+    return res.status(500).json({ error: 'Variable FORMATEURS_EMAILS non configurée' });
+  }
+
   const identifiant = normaliserIdentifiant(formateurPrenom, formateurNom);
+
+  let mapping;
+  try {
+    mapping = JSON.parse(FORMATEURS_EMAILS);
+  } catch (e) {
+    return res.status(500).json({ error: 'FORMATEURS_EMAILS JSON invalide' });
+  }
+
+  const destinataire = mapping[identifiant];
+  if (!destinataire) {
+    return res.status(400).json({ error: 'Aucun email trouvé pour ' + identifiant + '. Ajoutez-le dans FORMATEURS_EMAILS.' });
+  }
 
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -61,17 +77,6 @@ export default async function handler(req, res) {
       pass: SMTP_PASS,
     },
   });
-
-  // Chercher l'email direct du formateur dans le mapping
-  let destinataire = NOTIFY_EMAIL;
-  try {
-    const mapping = FORMATEURS_EMAILS ? JSON.parse(FORMATEURS_EMAILS) : {};
-    if (mapping[identifiant]) {
-      destinataire = mapping[identifiant];
-    }
-  } catch (e) {
-    // Si le JSON est invalide, on continue avec NOTIFY_EMAIL
-  }
 
   try {
     await transporter.sendMail({

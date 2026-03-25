@@ -1688,24 +1688,6 @@ ${emailInfo}${testInfo}`);
         return { ids: Array.from(formateursModifies), details: detailsParFormateur };
     };
 
-    // Délai entre chaque email pour éviter qu'Outlook désactive les règles de transfert
-    const delaiEntreEmails = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-    // Envoi email-test de vérification des règles Outlook
-    const envoyerEmailTest = async (semaine) => {
-        try {
-            const emailRes = await fetch('/api/email/send-notification', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ formateurNom: 'ADMIN', formateurPrenom: 'TEST', typeNotification: 'validation', semaine, details: 'Ceci est un email-test. Si vous recevez ce message, les règles Outlook sont actives.' })
-            });
-            return emailRes.ok;
-        } catch (err) {
-            console.error('[EMAIL-DEBUG] Erreur envoi email-test:', err);
-            return false;
-        }
-    };
-
     // Fonction envoi messages pour modifications
     const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates, detailsModifs) => {
         try {
@@ -1764,8 +1746,6 @@ ${emailInfo}${testInfo}`);
 
                 recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
 
-                // Attendre 5 secondes avant le prochain email
-                await delaiEntreEmails(5000);
             }
 
             // Envoyer recap à la coordination
