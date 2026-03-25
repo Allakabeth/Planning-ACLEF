@@ -1552,10 +1552,8 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             } else if (emailResult?.emailsEchoues > 0) {
                 emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
             } else if (emailResult?.emailsEnvoyes > 0) {
-                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées (espacées de 5s)`;
-                testInfo = emailResult.emailTestOk
-                    ? '\n🔔 Email-test envoyé : vérifiez votre boîte pour confirmer que les règles Outlook sont actives'
-                    : '\n⚠️ Email-test échoué : vérifiez les règles Outlook';
+                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+                testInfo = '\n📋 Récapitulatif envoyé à aclef@aclef.fr';
             }
 
             setMessage(`✅ Planning semaine ${semaine} validé et transmis !
@@ -1609,10 +1607,8 @@ ${emailInfo}${testInfo}`);
                 } else if (emailResult?.emailsEchoues > 0) {
                     emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
                 } else if (emailResult?.emailsEnvoyes > 0) {
-                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées (espacées de 5s)`;
-                    testInfo = emailResult.emailTestOk
-                        ? '\n🔔 Email-test envoyé : vérifiez votre boîte pour confirmer que les règles Outlook sont actives'
-                        : '\n⚠️ Email-test échoué : vérifiez les règles Outlook';
+                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
+                    testInfo = '\n📋 Récapitulatif envoyé à aclef@aclef.fr';
                 }
             }
 
@@ -1715,6 +1711,7 @@ ${emailInfo}${testInfo}`);
         try {
             let emailsEnvoyes = 0;
             let emailsEchoues = 0;
+            const recapLignes = [];
 
             for (const formateurId of formateursModifies) {
                 const formateur = formateurs.find(f => f.id === formateurId);
@@ -1745,6 +1742,7 @@ ${emailInfo}${testInfo}`);
 
                 // Notification email avec détails
                 const emailDetails = detailsText || 'Connectez-vous pour consulter les changements.';
+                let emailOk = false;
                 try {
                     const emailRes = await fetch('/api/email/send-notification', {
                         method: 'POST',
@@ -1757,27 +1755,40 @@ ${emailInfo}${testInfo}`);
                         emailsEchoues++;
                     } else {
                         emailsEnvoyes++;
+                        emailOk = true;
                     }
                 } catch (emailErr) {
                     console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
                     emailsEchoues++;
                 }
 
+                recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+
                 // Attendre 5 secondes avant le prochain email
                 await delaiEntreEmails(5000);
             }
 
-            // Envoyer email-test de vérification à la fin
-            let emailTestOk = false;
-            if (emailsEnvoyes > 0) {
-                await delaiEntreEmails(5000);
-                emailTestOk = await envoyerEmailTest(semaine);
+            // Envoyer recap à la coordination
+            if (recapLignes.length > 0) {
+                try {
+                    await fetch('/api/email/send-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            destinataireEmail: 'aclef@aclef.fr',
+                            sujet: `Recap modifications planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
+                            contenu: `Récapitulatif des notifications de modification envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
+                        })
+                    });
+                } catch (recapErr) {
+                    console.error('[EMAIL-DEBUG] Erreur envoi recap modifications:', recapErr);
+                }
             }
 
             if (emailsEnvoyes === 0 && emailsEchoues === 0) {
                 return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
             }
-            return { emailsEnvoyes, emailsEchoues, emailTestOk };
+            return { emailsEnvoyes, emailsEchoues };
         } catch (error) {
             console.error('Erreur envoi messages modifications:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
@@ -1812,6 +1823,7 @@ ${emailInfo}${testInfo}`);
 
                 let emailsEnvoyes = 0;
                 let emailsEchoues = 0;
+                const recapLignes = [];
 
                 for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
                     const formateur = formateurs.find(f => f.id === formateurId);
@@ -1836,6 +1848,7 @@ ${emailInfo}${testInfo}`);
                         }
 
                         // Notification email
+                        let emailOk = false;
                         try {
                             const emailRes = await fetch('/api/email/send-notification', {
                                 method: 'POST',
@@ -1848,11 +1861,14 @@ ${emailInfo}${testInfo}`);
                                 emailsEchoues++;
                             } else {
                                 emailsEnvoyes++;
+                                emailOk = true;
                             }
                         } catch (emailErr) {
                             console.error('[EMAIL-DEBUG] Exception email pour', formateur.prenom, formateur.nom, ':', emailErr);
                             emailsEchoues++;
                         }
+
+                        recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
 
                         // Attendre 5 secondes avant le prochain email
                         await delaiEntreEmails(5000);
@@ -1861,15 +1877,25 @@ ${emailInfo}${testInfo}`);
                     }
                 }
 
-                // Envoyer email-test de vérification à la fin
-                let emailTestOk = false;
-                if (emailsEnvoyes > 0) {
-                    await delaiEntreEmails(5000);
-                    emailTestOk = await envoyerEmailTest(semaine);
+                // Envoyer recap à la coordination
+                if (recapLignes.length > 0) {
+                    try {
+                        await fetch('/api/email/send-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                destinataireEmail: 'aclef@aclef.fr',
+                                sujet: `Recap validation planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
+                                contenu: `Récapitulatif des notifications de validation envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
+                            })
+                        });
+                    } catch (recapErr) {
+                        console.error('[EMAIL-DEBUG] Erreur envoi recap validation:', recapErr);
+                    }
                 }
 
-                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués, test: ' + emailTestOk);
-                return { emailsEnvoyes, emailsEchoues, emailTestOk };
+                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
+                return { emailsEnvoyes, emailsEchoues };
             } else {
                 console.warn('[EMAIL-DEBUG] Aucune affectation trouvée - pas d\'emails envoyés');
                 return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
