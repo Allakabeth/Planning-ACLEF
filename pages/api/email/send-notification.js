@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'formateurNom et formateurPrenom requis' });
   }
 
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFY_EMAIL } = process.env;
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFY_EMAIL, FORMATEURS_EMAILS } = process.env;
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !NOTIFY_EMAIL) {
     return res.status(500).json({ error: 'Configuration SMTP manquante' });
@@ -37,10 +37,21 @@ export default async function handler(req, res) {
     },
   });
 
+  // Chercher l'email direct du formateur dans le mapping
+  let destinataire = NOTIFY_EMAIL;
+  try {
+    const mapping = FORMATEURS_EMAILS ? JSON.parse(FORMATEURS_EMAILS) : {};
+    if (mapping[identifiant]) {
+      destinataire = mapping[identifiant];
+    }
+  } catch (e) {
+    // Si le JSON est invalide, on continue avec NOTIFY_EMAIL
+  }
+
   try {
     await transporter.sendMail({
-      from: SMTP_USER,
-      to: NOTIFY_EMAIL,
+      from: '"ACLEF Planning" <' + SMTP_USER + '>',
+      to: destinataire,
       subject: 'NOTIF-' + identifiant,
       text: typeNotification === 'validation'
         ? `Le planning de la semaine ${semaine || ''} a été validé.\n\n${details || 'Connectez-vous pour le consulter.'}\n\nNe répondez pas à ce mail.`
