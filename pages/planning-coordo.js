@@ -494,7 +494,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
         const weekDates = getWeekDates(currentDate);
         absencesApprenants.forEach(abs => {
             if (abs.type === 'absence_ponctuelle' && abs.date_specifique && abs.creneau &&
-                abs.motif === 'Absent') {
+                (abs.motif === '' || !abs.motif)) {
                 if (weekDates.includes(abs.date_specifique)) {
                     map.add(`${abs.apprenant_id}-${abs.date_specifique}-${abs.creneau}`);
                 }
@@ -1435,7 +1435,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
 
                 if (absencePonctuelle) {
                     // Si c'est une absence imprevue (depuis planning coordo), garder visible en rouge
-                    if (absencePonctuelle.motif === 'Absent') {
+                    if (absencePonctuelle.motif === '' || !absencePonctuelle.motif) {
                         return true;
                     }
                     console.log(`🧹 Apprenant ${apprenantId} absent (ponctuel) le ${dateStr} ${creneau}`);
@@ -2699,7 +2699,7 @@ ${emailInfo}${testInfo}`);
                     type: 'absence_ponctuelle',
                     date_specifique: date,
                     creneau: creneauDB,
-                    motif: 'Absent'
+                    motif: ''
                 })
             });
 
