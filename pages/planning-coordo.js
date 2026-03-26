@@ -1901,6 +1901,44 @@ ${emailInfo}${testInfo}`);
 
                 console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
                 return { emailsEnvoyes, emailsEchoues };
+            } else {
+                // Aucune affectation : envoyer à tous les formateurs
+                let emailsEnvoyes = 0;
+                let emailsEchoues = 0;
+                const recapLignes = [];
+
+                for (const formateur of formateurs) {
+                    const emailDetails = 'Pas d\'intervention prévue cette semaine.';
+                    let emailOk = false;
+                    try {
+                        const emailRes = await fetch('/api/email/send-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
+                        });
+                        if (emailRes.ok) { emailsEnvoyes++; emailOk = true; } else { emailsEchoues++; }
+                    } catch (emailErr) { emailsEchoues++; }
+                    recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                }
+
+                if (recapLignes.length > 0) {
+                    try {
+                        await fetch('/api/email/send-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                destinataireEmail: 'aclef@aclef.fr',
+                                sujet: `Recap validation planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
+                                contenu: `Récapitulatif des notifications de validation envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
+                            })
+                        });
+                    } catch (recapErr) {
+                        console.error('[EMAIL-DEBUG] Erreur envoi recap validation:', recapErr);
+                    }
+                }
+
+                return { emailsEnvoyes, emailsEchoues };
+            }
         } catch (error) {
             console.error('[EMAIL-DEBUG] Erreur globale envoi messages validation:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
