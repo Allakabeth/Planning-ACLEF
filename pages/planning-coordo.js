@@ -1855,6 +1855,33 @@ ${emailInfo}${testInfo}`);
                     }
                 }
 
+                // Envoyer aux formateurs sans affectation cette semaine
+                const formateursAfectesIds = Object.keys(affectationsParFormateur);
+                const formateursSansAffectation = formateurs.filter(f => !formateursAfectesIds.includes(f.id));
+
+                for (const formateur of formateursSansAffectation) {
+                    const emailDetails = 'Pas d\'intervention prévue cette semaine.';
+
+                    let emailOk = false;
+                    try {
+                        const emailRes = await fetch('/api/email/send-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
+                        });
+                        if (!emailRes.ok) {
+                            emailsEchoues++;
+                        } else {
+                            emailsEnvoyes++;
+                            emailOk = true;
+                        }
+                    } catch (emailErr) {
+                        emailsEchoues++;
+                    }
+
+                    recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                }
+
                 // Envoyer recap à la coordination
                 if (recapLignes.length > 0) {
                     try {
@@ -1874,10 +1901,6 @@ ${emailInfo}${testInfo}`);
 
                 console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
                 return { emailsEnvoyes, emailsEchoues };
-            } else {
-                console.warn('[EMAIL-DEBUG] Aucune affectation trouvée - pas d\'emails envoyés');
-                return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
-            }
         } catch (error) {
             console.error('[EMAIL-DEBUG] Erreur globale envoi messages validation:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
