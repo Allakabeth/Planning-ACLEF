@@ -1850,8 +1850,6 @@ ${emailInfo}${testInfo}`);
 
                         recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
 
-                        // Attendre 5 secondes avant le prochain email
-                        await delaiEntreEmails(5000);
                     } else {
                         console.warn('[EMAIL-DEBUG] Formateur non trouvé dans la liste pour id:', formateurId);
                     }
