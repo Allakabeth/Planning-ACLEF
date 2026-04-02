@@ -1232,7 +1232,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
                                Object.values(newApprenantsParCase).some(arr => arr.length > 0);
 
                 if (!hasData) {
-                    const planningType = await genererPlanningDepuisType(weekDates, absencesValidees, absencesApprenants);
+                    const planningType = await genererPlanningDepuisType(weekDates, absencesValidees, absencesApprenants, fermetures);
 
                     if (planningType) {
                         // Fusionner les données du planning type
@@ -1642,8 +1642,13 @@ ${emailInfo}${testInfo}`);
 
         // Comparer avec l'état en cours d'édition
         jours.forEach((jour, dayIndex) => {
+            const currentDateStr = weekDates[dayIndex];
+
             (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
                 ['Matin', 'AM'].forEach((creneau) => {
+                    // Ignorer les jours/creneaux fermes
+                    if (estJourFerme(currentDateStr, creneau)) return;
+
                     const key = `${dayIndex}-${lieuIndex}-${creneau}`;
                     const keyDB = `${jour}-${lieuIndex}-${creneau === 'Matin' ? 'matin' : 'AM'}`;
 
@@ -1790,11 +1795,17 @@ ${emailInfo}${testInfo}`);
                 return;
             }
 
-            console.warn('[EMAIL-DEBUG] Affectations trouvées:', affectations?.length || 0);
+            // Filtrer les affectations sur jours fermes
+            const affectationsFiltrees = (affectations || []).filter(aff => {
+                const creneauAff = aff.creneau === 'matin' ? 'Matin' : 'AM';
+                return !estJourFerme(aff.date, creneauAff);
+            });
 
-            if (affectations && affectations.length > 0) {
+            console.warn('[EMAIL-DEBUG] Affectations trouvées:', affectationsFiltrees.length);
+
+            if (affectationsFiltrees.length > 0) {
                 const affectationsParFormateur = {};
-                affectations.forEach(aff => {
+                affectationsFiltrees.forEach(aff => {
                     if (!affectationsParFormateur[aff.formateur_id]) {
                         affectationsParFormateur[aff.formateur_id] = [];
                     }
@@ -1953,11 +1964,14 @@ ${emailInfo}${testInfo}`);
 
         jours.forEach((jour, dayIndex) => {
             const currentDateStr = weekDates[dayIndex];
-            
+
             (lieuxParJour[dayIndex] || []).forEach((lieuIndex) => {
                 ['Matin', 'AM'].forEach((creneau) => {
+                    // Ne pas sauvegarder les jours/creneaux fermes
+                    if (estJourFerme(currentDateStr, creneau)) return;
+
                     const key = `${dayIndex}-${lieuIndex}-${creneau}`;
-                    
+
                     const formateursIds = (formateursParCase[key] || []).filter(id => id !== "");
                     const apprenantsIds = (apprenantsParCase[key] || []).filter(id => id !== "");
                     const lieuId = lieuxSelectionnes[key] || null;
