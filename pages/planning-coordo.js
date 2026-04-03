@@ -461,6 +461,8 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [fermetures, setFermetures] = useState([]); // Liste des fermetures chargées
     const [showModalAbsenceImprevue, setShowModalAbsenceImprevue] = useState(false);
     const [cellAbsenceImprevue, setCellAbsenceImprevue] = useState(null);
+    const [enAttenteConfirmation, setEnAttenteConfirmation] = useState(null); // 'validation' | 'modifications' | null
+    const [donneesNotifPendantes, setDonneesNotifPendantes] = useState(null); // { semaine, weekDates, formateursModifies?, detailsModifs? }
     const [nouvelleFermeture, setNouvelleFermeture] = useState({
         date_debut: '',
         date_fin: '',
@@ -1529,37 +1531,30 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
     };
 
     const handleValiderTransmettre = async () => {
-        if (!window.confirm('Valider et transmettre le planning ? Les formateurs recevront des notifications.')) return;
-        
+        if (!window.confirm('Valider le planning ? Un récapitulatif sera envoyé à aclef@aclef.fr pour vérification avant envoi aux formateurs.')) return;
+
         setIsLoading(true);
-        
+
         try {
             const weekDates = getWeekDates(currentDate);
             const stats = await sauvegarderPlanning('validé', weekDates);
 
-            // NOUVEAU : Appliquer coloration persistante après sauvegarde réussie
+            // Appliquer coloration persistante après sauvegarde réussie
             const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
             setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
-            const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates);
+            // Phase 1 : envoyer seulement le recap preview
+            const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates, true);
 
-            let emailInfo = '📧 Messages envoyés aux formateurs';
-            let testInfo = '';
             if (emailResult?.erreur) {
-                emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
-            } else if (emailResult?.aucuneAffectation) {
-                emailInfo = '⚠️ Aucune affectation trouvée - pas de notifications envoyées';
-            } else if (emailResult?.emailsEchoues > 0) {
-                emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
-            } else if (emailResult?.emailsEnvoyes > 0) {
-                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
-                testInfo = '\n📋 Récapitulatif envoyé à aclef@aclef.fr';
+                setMessage(`⚠️ Erreur: ${emailResult.erreur}`);
+                setTimeout(() => setMessage(''), 5000);
+            } else {
+                // Stocker les donnees pour l'envoi definitif
+                setEnAttenteConfirmation('validation');
+                setDonneesNotifPendantes({ semaine, weekDates, stats });
+                setMessage(`✅ Planning semaine ${semaine} sauvegardé !\n📋 Récapitulatif PREVIEW envoyé à aclef@aclef.fr\n👉 Vérifiez puis cliquez "Confirmer l'envoi" ou "Annuler"`);
             }
-
-            setMessage(`✅ Planning semaine ${semaine} validé et transmis !
-${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs affectés
-${emailInfo}${testInfo}`);
-            setTimeout(() => setMessage(''), 12000);
 
         } catch (error) {
             console.error('Erreur lors de la validation:', error);
@@ -1570,9 +1565,55 @@ ${emailInfo}${testInfo}`);
         }
     };
 
+    // Phase 2 : envoi reel apres confirmation
+    const handleConfirmerEnvoi = async () => {
+        if (!donneesNotifPendantes) return;
+
+        setIsLoading(true);
+
+        try {
+            const { semaine: sem, weekDates: wd, stats, formateursModifies, detailsModifs } = donneesNotifPendantes;
+
+            let emailResult;
+            if (enAttenteConfirmation === 'validation') {
+                emailResult = await envoyerMessagesValidation(stats, sem, wd, false);
+            } else if (enAttenteConfirmation === 'modifications') {
+                emailResult = await envoyerMessagesModifications(formateursModifies, sem, wd, detailsModifs);
+            }
+
+            let emailInfo = '';
+            if (emailResult?.erreur) {
+                emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
+            } else if (emailResult?.emailsEchoues > 0) {
+                emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
+            } else if (emailResult?.emailsEnvoyes > 0) {
+                emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications envoyées aux formateurs`;
+            }
+
+            setMessage(`✅ Envoi confirmé ! ${emailInfo}`);
+            setTimeout(() => setMessage(''), 12000);
+
+        } catch (error) {
+            console.error('Erreur lors de l\'envoi:', error);
+            setMessage(`⚠️ Erreur envoi: ${error.message}`);
+            setTimeout(() => setMessage(''), 5000);
+        } finally {
+            setIsLoading(false);
+            setEnAttenteConfirmation(null);
+            setDonneesNotifPendantes(null);
+        }
+    };
+
+    const handleAnnulerEnvoi = () => {
+        setEnAttenteConfirmation(null);
+        setDonneesNotifPendantes(null);
+        setMessage('❌ Envoi annulé. Le planning est sauvegardé mais les formateurs n\'ont pas été notifiés.');
+        setTimeout(() => setMessage(''), 8000);
+    };
+
     // Fonction pour valider seulement les modifications
     const handleValiderModifications = async () => {
-        if (!window.confirm('Valider les modifications ? Seuls les formateurs modifiés recevront des notifications.')) return;
+        if (!window.confirm('Valider les modifications ? Un récapitulatif sera envoyé à aclef@aclef.fr pour vérification.')) return;
 
         setIsLoading(true);
 
@@ -1595,27 +1636,16 @@ ${emailInfo}${testInfo}`);
             const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
             setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
-            // 5. Envoyer messages seulement aux formateurs modifiés
-            let emailInfo = 'Aucun formateur modifié';
-            let testInfo = '';
+            // 5. Preview : envoyer recap seulement
             if (formateursModifies.length > 0) {
-                const emailResult = await envoyerMessagesModifications(formateursModifies, semaine, weekDates, detailsModifs);
-                if (emailResult?.erreur) {
-                    emailInfo = `⚠️ Erreur notifications: ${emailResult.erreur}`;
-                } else if (emailResult?.aucuneAffectation) {
-                    emailInfo = '⚠️ Aucune affectation trouvée - pas de notifications envoyées';
-                } else if (emailResult?.emailsEchoues > 0) {
-                    emailInfo = `⚠️ ${emailResult.emailsEnvoyes} emails envoyés, ${emailResult.emailsEchoues} échoués`;
-                } else if (emailResult?.emailsEnvoyes > 0) {
-                    emailInfo = `📧 ${emailResult.emailsEnvoyes} notifications email envoyées`;
-                    testInfo = '\n📋 Récapitulatif envoyé à aclef@aclef.fr';
-                }
+                await envoyerMessagesModifications(formateursModifies, semaine, weekDates, detailsModifs, true);
+                setEnAttenteConfirmation('modifications');
+                setDonneesNotifPendantes({ semaine, weekDates, stats, formateursModifies, detailsModifs });
+                setMessage(`✅ Modifications sauvegardées ! ${formateursModifies.length} formateur(s) modifié(s)\n📋 Récapitulatif PREVIEW envoyé à aclef@aclef.fr\n👉 Vérifiez puis cliquez "Confirmer l'envoi" ou "Annuler"`);
+            } else {
+                setMessage(`✅ Modifications sauvegardées !\n${stats.creneaux} créneaux • Aucun formateur modifié - pas de notification`);
+                setTimeout(() => setMessage(''), 8000);
             }
-
-            setMessage(`✅ Modifications validées !
-${stats.creneaux} créneaux • ${formateursModifies.length} formateur(s) modifié(s)
-${emailInfo}${testInfo}`);
-            setTimeout(() => setMessage(''), 12000);
 
         } catch (error) {
             console.error('Erreur lors de la validation des modifications:', error);
@@ -1693,8 +1723,8 @@ ${emailInfo}${testInfo}`);
         return { ids: Array.from(formateursModifies), details: detailsParFormateur };
     };
 
-    // Fonction envoi messages pour modifications
-    const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates, detailsModifs) => {
+    // Fonction envoi messages pour modifications (previewOnly = true envoie seulement le recap)
+    const envoyerMessagesModifications = async (formateursModifies, semaine, weekDates, detailsModifs, previewOnly = false) => {
         try {
             let emailsEnvoyes = 0;
             let emailsEchoues = 0;
@@ -1704,7 +1734,6 @@ ${emailInfo}${testInfo}`);
                 const formateur = formateurs.find(f => f.id === formateurId);
                 if (!formateur) continue;
 
-                // Construire le détail des modifications pour ce formateur
                 const changements = detailsModifs[formateurId] || [];
                 let detailsText = '';
                 if (changements.length > 0) {
@@ -1715,54 +1744,61 @@ ${emailInfo}${testInfo}`);
                     ).join('\n');
                 }
 
-                const { error: msgError } = await supabase.from('messages').insert({
-                    expediteur: 'Coordination ACLEF',
-                    destinataire_id: formateurId,
-                    objet: `Planning modifié - semaine ${semaine}`,
-                    contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\n${detailsText}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
-                    type_expediteur: 'admin'
-                });
-
-                if (msgError) {
-                    console.error('[EMAIL-DEBUG] Erreur insertion message modif pour', formateur.prenom, formateur.nom, ':', msgError);
-                }
-
-                // Notification email avec détails
                 const emailDetails = detailsText || 'Connectez-vous pour consulter les changements.';
-                let emailOk = false;
-                try {
-                    const emailRes = await fetch('/api/email/send-notification', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine, details: emailDetails })
+
+                if (previewOnly) {
+                    recapLignes.push(`[PREVIEW] ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                } else {
+                    const { error: msgError } = await supabase.from('messages').insert({
+                        expediteur: 'Coordination ACLEF',
+                        destinataire_id: formateurId,
+                        objet: `Planning modifié - semaine ${semaine}`,
+                        contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été modifié.\n\n${detailsText}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
+                        type_expediteur: 'admin'
                     });
-                    if (!emailRes.ok) {
-                        const errBody = await emailRes.json().catch(() => ({}));
-                        console.error('[EMAIL-DEBUG] Echec email modif pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
-                        emailsEchoues++;
-                    } else {
-                        emailsEnvoyes++;
-                        emailOk = true;
+
+                    if (msgError) {
+                        console.error('[EMAIL-DEBUG] Erreur insertion message modif pour', formateur.prenom, formateur.nom, ':', msgError);
                     }
-                } catch (emailErr) {
-                    console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
-                    emailsEchoues++;
+
+                    let emailOk = false;
+                    try {
+                        const emailRes = await fetch('/api/email/send-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'modification', semaine, details: emailDetails })
+                        });
+                        if (!emailRes.ok) {
+                            const errBody = await emailRes.json().catch(() => ({}));
+                            console.error('[EMAIL-DEBUG] Echec email modif pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
+                            emailsEchoues++;
+                        } else {
+                            emailsEnvoyes++;
+                            emailOk = true;
+                        }
+                    } catch (emailErr) {
+                        console.error('[EMAIL-DEBUG] Exception email modif pour', formateur.prenom, formateur.nom, ':', emailErr);
+                        emailsEchoues++;
+                    }
+
+                    recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
                 }
-
-                recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
-
             }
 
-            // Envoyer recap à la coordination
+            // Envoyer recap a la coordination
             if (recapLignes.length > 0) {
+                const prefixSujet = previewOnly ? '[PREVIEW] ' : '';
+                const suffixSujet = previewOnly
+                    ? `(${recapLignes.length} formateurs modifiés)`
+                    : `(${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`;
                 try {
                     await fetch('/api/email/send-notification', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             destinataireEmail: 'aclef@aclef.fr',
-                            sujet: `Recap modifications planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
-                            contenu: `Récapitulatif des notifications de modification envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
+                            sujet: `${prefixSujet}Recap modifications planning - semaine ${semaine} ${suffixSujet}`,
+                            contenu: `Récapitulatif des notifications de modification ${previewOnly ? 'A ENVOYER' : 'envoyées'} pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
                         })
                     });
                 } catch (recapErr) {
@@ -1770,20 +1806,20 @@ ${emailInfo}${testInfo}`);
                 }
             }
 
-            if (emailsEnvoyes === 0 && emailsEchoues === 0) {
+            if (!previewOnly && emailsEnvoyes === 0 && emailsEchoues === 0) {
                 return { emailsEnvoyes: 0, emailsEchoues: 0, aucuneAffectation: true };
             }
-            return { emailsEnvoyes, emailsEchoues };
+            return { emailsEnvoyes, emailsEchoues, previewOnly };
         } catch (error) {
             console.error('Erreur envoi messages modifications:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
         }
     };
 
-    // Fonction envoi messages validation
-    const envoyerMessagesValidation = async (stats, semaine, weekDates) => {
+    // Fonction envoi messages validation (previewOnly = true envoie seulement le recap a la coordination)
+    const envoyerMessagesValidation = async (stats, semaine, weekDates, previewOnly = false) => {
         try {
-            console.warn('[EMAIL-DEBUG] envoyerMessagesValidation appelée, weekDates:', weekDates);
+            console.warn('[EMAIL-DEBUG] envoyerMessagesValidation appelée, weekDates:', weekDates, 'previewOnly:', previewOnly);
             const { data: affectations, error: queryError } = await supabase
                 .from('planning_formateurs_hebdo')
                 .select('formateur_id, date, creneau, lieu_nom')
@@ -1803,6 +1839,10 @@ ${emailInfo}${testInfo}`);
 
             console.warn('[EMAIL-DEBUG] Affectations trouvées:', affectationsFiltrees.length);
 
+            const recapLignes = [];
+            let emailsEnvoyes = 0;
+            let emailsEchoues = 0;
+
             if (affectationsFiltrees.length > 0) {
                 const affectationsParFormateur = {};
                 affectationsFiltrees.forEach(aff => {
@@ -1811,10 +1851,6 @@ ${emailInfo}${testInfo}`);
                     }
                     affectationsParFormateur[aff.formateur_id].push(aff);
                 });
-
-                let emailsEnvoyes = 0;
-                let emailsEchoues = 0;
-                const recapLignes = [];
 
                 for (const [formateurId, affectationsFormateur] of Object.entries(affectationsParFormateur)) {
                     const formateur = formateurs.find(f => f.id === formateurId);
@@ -1825,20 +1861,59 @@ ${emailInfo}${testInfo}`);
 
                         const emailDetails = `Vos interventions :\n${creneauxDetail}`;
 
-                        const { error: msgError } = await supabase.from('messages').insert({
-                            expediteur: 'Coordination ACLEF',
-                            destinataire_id: formateurId,
-                            objet: `Planning semaine ${semaine} validé`,
-                            contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été validé.\n\n${emailDetails}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
-                            statut: 'envoye',
-                            type: 'planning_valide'
-                        });
+                        if (previewOnly) {
+                            recapLignes.push(`[PREVIEW] ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                        } else {
+                            const { error: msgError } = await supabase.from('messages').insert({
+                                expediteur: 'Coordination ACLEF',
+                                destinataire_id: formateurId,
+                                objet: `Planning semaine ${semaine} validé`,
+                                contenu: `Bonjour ${formateur.prenom},\n\nVotre planning pour la semaine ${semaine} a été validé.\n\n${emailDetails}\n\nMerci de votre engagement !\n\nCordialement,\nL'équipe ACLEF`,
+                                statut: 'envoye',
+                                type: 'planning_valide'
+                            });
 
-                        if (msgError) {
-                            console.error('[EMAIL-DEBUG] Erreur insertion message pour', formateur.prenom, formateur.nom, ':', msgError);
+                            if (msgError) {
+                                console.error('[EMAIL-DEBUG] Erreur insertion message pour', formateur.prenom, formateur.nom, ':', msgError);
+                            }
+
+                            let emailOk = false;
+                            try {
+                                const emailRes = await fetch('/api/email/send-notification', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
+                                });
+                                if (!emailRes.ok) {
+                                    const errBody = await emailRes.json().catch(() => ({}));
+                                    console.error('[EMAIL-DEBUG] Echec email pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
+                                    emailsEchoues++;
+                                } else {
+                                    emailsEnvoyes++;
+                                    emailOk = true;
+                                }
+                            } catch (emailErr) {
+                                console.error('[EMAIL-DEBUG] Exception email pour', formateur.prenom, formateur.nom, ':', emailErr);
+                                emailsEchoues++;
+                            }
+
+                            recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
                         }
+                    } else {
+                        console.warn('[EMAIL-DEBUG] Formateur non trouvé dans la liste pour id:', formateurId);
+                    }
+                }
 
-                        // Notification email
+                // Formateurs sans affectation cette semaine
+                const formateursAfectesIds = Object.keys(affectationsParFormateur);
+                const formateursSansAffectation = formateurs.filter(f => !formateursAfectesIds.includes(f.id));
+
+                for (const formateur of formateursSansAffectation) {
+                    const emailDetails = 'Pas d\'intervention prévue cette semaine.';
+
+                    if (previewOnly) {
+                        recapLignes.push(`[PREVIEW] ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                    } else {
                         let emailOk = false;
                         try {
                             const emailRes = await fetch('/api/email/send-notification', {
@@ -1846,110 +1921,57 @@ ${emailInfo}${testInfo}`);
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
                             });
-                            if (!emailRes.ok) {
-                                const errBody = await emailRes.json().catch(() => ({}));
-                                console.error('[EMAIL-DEBUG] Echec email pour', formateur.prenom, formateur.nom, ':', emailRes.status, errBody);
-                                emailsEchoues++;
-                            } else {
-                                emailsEnvoyes++;
-                                emailOk = true;
-                            }
-                        } catch (emailErr) {
-                            console.error('[EMAIL-DEBUG] Exception email pour', formateur.prenom, formateur.nom, ':', emailErr);
-                            emailsEchoues++;
-                        }
+                            if (!emailRes.ok) { emailsEchoues++; } else { emailsEnvoyes++; emailOk = true; }
+                        } catch (emailErr) { emailsEchoues++; }
 
                         recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
-
-                    } else {
-                        console.warn('[EMAIL-DEBUG] Formateur non trouvé dans la liste pour id:', formateurId);
                     }
                 }
-
-                // Envoyer aux formateurs sans affectation cette semaine
-                const formateursAfectesIds = Object.keys(affectationsParFormateur);
-                const formateursSansAffectation = formateurs.filter(f => !formateursAfectesIds.includes(f.id));
-
-                for (const formateur of formateursSansAffectation) {
-                    const emailDetails = 'Pas d\'intervention prévue cette semaine.';
-
-                    let emailOk = false;
-                    try {
-                        const emailRes = await fetch('/api/email/send-notification', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
-                        });
-                        if (!emailRes.ok) {
-                            emailsEchoues++;
-                        } else {
-                            emailsEnvoyes++;
-                            emailOk = true;
-                        }
-                    } catch (emailErr) {
-                        emailsEchoues++;
-                    }
-
-                    recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
-                }
-
-                // Envoyer recap à la coordination
-                if (recapLignes.length > 0) {
-                    try {
-                        await fetch('/api/email/send-notification', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                destinataireEmail: 'aclef@aclef.fr',
-                                sujet: `Recap validation planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
-                                contenu: `Récapitulatif des notifications de validation envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
-                            })
-                        });
-                    } catch (recapErr) {
-                        console.error('[EMAIL-DEBUG] Erreur envoi recap validation:', recapErr);
-                    }
-                }
-
-                console.warn('[EMAIL-DEBUG] Résultat: ' + emailsEnvoyes + ' emails envoyés, ' + emailsEchoues + ' échoués');
-                return { emailsEnvoyes, emailsEchoues };
             } else {
-                // Aucune affectation : envoyer à tous les formateurs
-                let emailsEnvoyes = 0;
-                let emailsEchoues = 0;
-                const recapLignes = [];
-
+                // Aucune affectation : tous les formateurs recoivent "pas d'intervention"
                 for (const formateur of formateurs) {
                     const emailDetails = 'Pas d\'intervention prévue cette semaine.';
-                    let emailOk = false;
-                    try {
-                        const emailRes = await fetch('/api/email/send-notification', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
-                        });
-                        if (emailRes.ok) { emailsEnvoyes++; emailOk = true; } else { emailsEchoues++; }
-                    } catch (emailErr) { emailsEchoues++; }
-                    recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
-                }
 
-                if (recapLignes.length > 0) {
-                    try {
-                        await fetch('/api/email/send-notification', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                destinataireEmail: 'aclef@aclef.fr',
-                                sujet: `Recap validation planning - semaine ${semaine} (${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`,
-                                contenu: `Récapitulatif des notifications de validation envoyées pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
-                            })
-                        });
-                    } catch (recapErr) {
-                        console.error('[EMAIL-DEBUG] Erreur envoi recap validation:', recapErr);
+                    if (previewOnly) {
+                        recapLignes.push(`[PREVIEW] ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
+                    } else {
+                        let emailOk = false;
+                        try {
+                            const emailRes = await fetch('/api/email/send-notification', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ formateurNom: formateur.nom, formateurPrenom: formateur.prenom, typeNotification: 'validation', semaine, details: emailDetails })
+                            });
+                            if (emailRes.ok) { emailsEnvoyes++; emailOk = true; } else { emailsEchoues++; }
+                        } catch (emailErr) { emailsEchoues++; }
+
+                        recapLignes.push(`${emailOk ? '[OK]' : '[ECHEC]'} ${formateur.prenom} ${formateur.nom}\n${emailDetails}`);
                     }
                 }
-
-                return { emailsEnvoyes, emailsEchoues };
             }
+
+            // Envoyer recap a la coordination
+            if (recapLignes.length > 0) {
+                const prefixSujet = previewOnly ? '[PREVIEW] ' : '';
+                const suffixSujet = previewOnly
+                    ? `(${recapLignes.length} formateurs)`
+                    : `(${emailsEnvoyes} envoyés, ${emailsEchoues} échoués)`;
+                try {
+                    await fetch('/api/email/send-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            destinataireEmail: 'aclef@aclef.fr',
+                            sujet: `${prefixSujet}Recap validation planning - semaine ${semaine} ${suffixSujet}`,
+                            contenu: `Récapitulatif des notifications de validation ${previewOnly ? 'A ENVOYER' : 'envoyées'} pour la semaine ${semaine} :\n\n${recapLignes.join('\n\n---\n\n')}`
+                        })
+                    });
+                } catch (recapErr) {
+                    console.error('[EMAIL-DEBUG] Erreur envoi recap validation:', recapErr);
+                }
+            }
+
+            return { emailsEnvoyes, emailsEchoues, previewOnly };
         } catch (error) {
             console.error('[EMAIL-DEBUG] Erreur globale envoi messages validation:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
@@ -3443,6 +3465,44 @@ ${emailInfo}${testInfo}`);
                         >
                             {isLoading ? 'Validation...' : '🔄 Valider Modifications'}
                         </button>
+
+                        {enAttenteConfirmation && (
+                            <>
+                                <button
+                                    onClick={handleConfirmerEnvoi}
+                                    disabled={isLoading}
+                                    style={{
+                                        padding: '6px 16px',
+                                        backgroundColor: isLoading ? '#94a3b8' : '#dc2626',
+                                        color: 'white',
+                                        border: '2px solid #991b1b',
+                                        borderRadius: '6px',
+                                        fontSize: '14px',
+                                        fontWeight: '700',
+                                        cursor: isLoading ? 'not-allowed' : 'pointer',
+                                        animation: 'pulse 2s infinite'
+                                    }}
+                                >
+                                    {isLoading ? 'Envoi...' : '📧 Confirmer l\'envoi aux formateurs'}
+                                </button>
+                                <button
+                                    onClick={handleAnnulerEnvoi}
+                                    disabled={isLoading}
+                                    style={{
+                                        padding: '6px 16px',
+                                        backgroundColor: '#6b7280',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        cursor: isLoading ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    Annuler
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 

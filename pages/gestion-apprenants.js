@@ -12,7 +12,7 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
     // États
     const [apprenants, setApprenants] = useState([])
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
-    const [filtreStatut, setFiltreStatut] = useState('actif')
+    const [filtreStatut, setFiltreStatut] = useState('en_cours')
     const [filtreDispositif, setFiltreDispositif] = useState('tous')
     const [filtreLieu, setFiltreLieu] = useState('tous')
     const [filtreRecherche, setFiltreRecherche] = useState('')
@@ -73,6 +73,11 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
         dispositif: 'HSP',
         lieu_formation_id: ''
     })
+
+    // Archivage automatique au montage (une seule fois)
+    useEffect(() => {
+        archivageAutoApprenants()
+    }, [])
 
     useEffect(() => {
         fetchApprenants()
@@ -154,6 +159,34 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
         }
     }
 
+    // Archivage automatique : apprenants sortis depuis plus de 7 mois
+    const archivageAutoApprenants = async () => {
+        try {
+            const dateLimite = new Date()
+            dateLimite.setMonth(dateLimite.getMonth() - 7)
+            const dateLimiteStr = dateLimite.toISOString().split('T')[0]
+
+            const { data, error } = await supabase
+                .from('users')
+                .update({ archive: true })
+                .eq('role', 'apprenant')
+                .eq('archive', false)
+                .not('date_fin_formation_reelle', 'is', null)
+                .lt('date_fin_formation_reelle', dateLimiteStr)
+                .select('id, prenom, nom, date_fin_formation_reelle')
+
+            if (error) {
+                console.error('❌ Erreur archivage auto:', error)
+                return
+            }
+            if (data && data.length > 0) {
+                console.log(`📦 Archivage auto : ${data.length} apprenant(s) archivé(s) (sortie > 7 mois)`, data.map(a => `${a.prenom} ${a.nom}`))
+            }
+        } catch (err) {
+            console.error('❌ Erreur archivage auto:', err)
+        }
+    }
+
     // Fonction pour récupérer les apprenants (avec vue enrichie)
     const fetchApprenants = async () => {
         try {
@@ -201,8 +234,12 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
             }))
             
             // Filtre par statut
-            if (filtreStatut === 'actif') {
-                apprenantsFiltres = apprenantsFiltres.filter(a => a.archive !== true)
+            if (filtreStatut === 'en_cours') {
+                apprenantsFiltres = apprenantsFiltres.filter(a => a.archive !== true && (a.statut_formation === 'en_cours' || !a.statut_formation))
+            } else if (filtreStatut === 'termine') {
+                apprenantsFiltres = apprenantsFiltres.filter(a => a.archive !== true && a.statut_formation === 'termine')
+            } else if (filtreStatut === 'suspendu') {
+                apprenantsFiltres = apprenantsFiltres.filter(a => a.archive !== true && a.statut_formation === 'suspendu')
             } else if (filtreStatut === 'archive') {
                 apprenantsFiltres = apprenantsFiltres.filter(a => a.archive === true)
             }
@@ -1543,11 +1580,11 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '15px' }}>
                         {/* Champ de recherche */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 250px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '0 1 200px' }}>
                             <label style={{ fontWeight: '500', color: '#374151' }}>🔍</label>
                             <input
                                 type="text"
-                                placeholder="Rechercher par nom ou prénom..."
+                                placeholder="Rechercher..."
                                 value={filtreRecherche}
                                 onChange={(e) => setFiltreRecherche(e.target.value)}
                                 style={{
@@ -1560,23 +1597,33 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                             />
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <label style={{ fontWeight: '500', color: '#374151' }}>Statut :</label>
-                            <select
-                                value={filtreStatut}
-                                onChange={(e) => setFiltreStatut(e.target.value)}
-                                style={{
-                                    padding: '8px 12px',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '8px',
-                                    fontSize: '14px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <option value="actif">Apprenants actifs</option>
-                                <option value="archive">Apprenants archivés</option>
-                                <option value="tous">Tous les apprenants</option>
-                            </select>
+                        {/* Filtres statut en boutons pill */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {[
+                                { value: 'en_cours', label: 'En cours', bg: '#dbeafe', bgActive: '#2563eb', color: '#1e40af', colorActive: '#fff' },
+                                { value: 'termine', label: 'Terminé', bg: '#d1fae5', bgActive: '#059669', color: '#065f46', colorActive: '#fff' },
+                                { value: 'suspendu', label: 'Suspendu', bg: '#fef3c7', bgActive: '#d97706', color: '#92400e', colorActive: '#fff' },
+                                { value: 'archive', label: 'Archivés', bg: '#f3f4f6', bgActive: '#6b7280', color: '#374151', colorActive: '#fff' },
+                                { value: 'tous', label: 'Tous', bg: '#f3f4f6', bgActive: '#374151', color: '#374151', colorActive: '#fff' }
+                            ].map(btn => (
+                                <button
+                                    key={btn.value}
+                                    onClick={() => setFiltreStatut(btn.value)}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '20px',
+                                        border: 'none',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        cursor: 'pointer',
+                                        backgroundColor: filtreStatut === btn.value ? btn.bgActive : btn.bg,
+                                        color: filtreStatut === btn.value ? btn.colorActive : btn.color,
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
                         </div>
                         
                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
