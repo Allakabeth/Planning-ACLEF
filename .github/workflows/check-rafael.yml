@@ -1,0 +1,28 @@
+name: Check Rafael Prescriptions
+
+on:
+  schedule:
+    # Toutes les heures, du lundi au vendredi, de 8h à 18h (UTC+2 = 6h-16h UTC)
+    - cron: '0 6-16 * * 1-5'
+  workflow_dispatch: # Déclenchement manuel possible
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: cd scripts/rafael-checker && npm install
+
+      - name: Check for new prescriptions
+        run: node scripts/rafael-checker/check-prescriptions.mjs
+        env:
+          RAFAEL_EMAIL: ${{ secrets.RAFAEL_EMAIL }}
+          RAFAEL_PASSWORD: ${{ secrets.RAFAEL_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

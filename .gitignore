@@ -147,6 +147,7 @@ pages/api/test-*.js
 .mcp.json
 .mcp.json.backup*
 *.mjs
+!scripts/rafael-checker/*.mjs
 *.sql
 tasks/
 *.png
