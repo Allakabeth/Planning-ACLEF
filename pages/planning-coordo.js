@@ -461,6 +461,7 @@ function PlanningCoordo({ user, logout, inactivityTime, priority }) {
     const [fermetures, setFermetures] = useState([]); // Liste des fermetures chargées
     const [showModalAbsenceImprevue, setShowModalAbsenceImprevue] = useState(false);
     const [cellAbsenceImprevue, setCellAbsenceImprevue] = useState(null);
+    const [motifsImprevues, setMotifsImprevues] = useState({});
     const [enAttenteConfirmation, setEnAttenteConfirmation] = useState(null); // 'validation' | 'modifications' | null
     const [donneesNotifPendantes, setDonneesNotifPendantes] = useState(null); // { semaine, weekDates, formateursModifies?, detailsModifs? }
     const [nouvelleFermeture, setNouvelleFermeture] = useState({
@@ -2735,7 +2736,8 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                     type: 'absence_ponctuelle',
                     date_specifique: date,
                     creneau: creneauDB,
-                    motif: ''
+                    motif: motifsImprevues[apprenantId]?.motif || '',
+                    commentaire: motifsImprevues[apprenantId]?.commentaire || ''
                 })
             });
 
@@ -2806,6 +2808,62 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
 
         } catch (error) {
             setMessage('Erreur lors de l\'annulation de l\'absence');
+        }
+    };
+
+    // Handler pour mettre à jour motif/commentaire d'une absence existante
+    const handleUpdateMotifAbsence = async (apprenantId) => {
+        if (!cellAbsenceImprevue) return;
+
+        const { date, creneau } = cellAbsenceImprevue;
+        const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+
+        const absence = absencesApprenants.find(abs =>
+            abs.apprenant_id === apprenantId &&
+            abs.type === 'absence_ponctuelle' &&
+            abs.date_specifique === date &&
+            abs.creneau === creneauDB
+        );
+
+        if (!absence) {
+            setMessage('Absence non trouvee');
+            return;
+        }
+
+        const motif = motifsImprevues[apprenantId]?.motif || '';
+        const commentaire = motifsImprevues[apprenantId]?.commentaire || '';
+
+        try {
+            const response = await fetch('/api/admin/absences-apprenants', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: absence.id,
+                    motif,
+                    commentaire
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                setMessage('Erreur: ' + (result.error || 'Erreur inconnue'));
+                return;
+            }
+
+            // Recharger les absences apprenants
+            const { data: absData } = await supabase
+                .from('absences_apprenants')
+                .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
+                .eq('statut', 'actif');
+
+            if (absData) setAbsencesApprenants(absData);
+
+            const apprenant = apprenants.find(a => a.id === apprenantId);
+            setMessage('Motif mis a jour pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
+
+        } catch (error) {
+            setMessage('Erreur lors de la mise a jour du motif');
         }
     };
 
@@ -5636,13 +5694,25 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                     const absKey = `${appId}-${cellAbsenceImprevue.date}-${creneauDB}`;
                                     const dejaAbsent = absencesImprevuesMap.has(absKey);
 
+                                    // Récupérer motif/commentaire existants si déjà absent
+                                    const existingAbsence = dejaAbsent ? absencesApprenants.find(abs =>
+                                        abs.apprenant_id === appId &&
+                                        abs.type === 'absence_ponctuelle' &&
+                                        abs.date_specifique === cellAbsenceImprevue.date &&
+                                        abs.creneau === creneauDB
+                                    ) : null;
+
+                                    const currentMotif = motifsImprevues[appId]?.motif ?? (existingAbsence?.motif || '');
+                                    const currentCommentaire = motifsImprevues[appId]?.commentaire ?? (existingAbsence?.commentaire || '');
+                                    const motifModifie = dejaAbsent && (
+                                        currentMotif !== (existingAbsence?.motif || '') ||
+                                        currentCommentaire !== (existingAbsence?.commentaire || '')
+                                    );
+
                                     return (
                                         <div
                                             key={appId}
                                             style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
                                                 padding: '10px 12px',
                                                 marginBottom: '8px',
                                                 borderRadius: '8px',
@@ -5650,29 +5720,91 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                                 border: '1px solid ' + (dejaAbsent ? '#fecaca' : '#e5e7eb')
                                             }}
                                         >
-                                            <span style={{
-                                                fontWeight: '500',
-                                                color: dejaAbsent ? '#dc2626' : '#1f2937',
-                                                fontSize: '14px'
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
                                             }}>
-                                                {apprenant.prenom} {apprenant.nom}
-                                                {dejaAbsent && ' - Absent'}
-                                            </span>
-                                            <button
-                                                onClick={() => dejaAbsent ? handleAnnulerAbsenceImprevue(appId) : handleMarquerAbsenceImprevue(appId)}
-                                                style={{
-                                                    padding: '6px 14px',
-                                                    backgroundColor: dejaAbsent ? '#16a34a' : '#dc2626',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    fontSize: '12px',
-                                                    cursor: 'pointer',
-                                                    fontWeight: '600'
-                                                }}
-                                            >
-                                                {dejaAbsent ? 'Annuler l\'absence' : 'Marquer absent'}
-                                            </button>
+                                                <span style={{
+                                                    fontWeight: '500',
+                                                    color: dejaAbsent ? '#dc2626' : '#1f2937',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    {apprenant.prenom} {apprenant.nom}
+                                                    {dejaAbsent && ' - Absent'}
+                                                </span>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    {motifModifie && (
+                                                        <button
+                                                            onClick={() => handleUpdateMotifAbsence(appId)}
+                                                            style={{
+                                                                padding: '6px 10px',
+                                                                backgroundColor: '#3b82f6',
+                                                                color: 'white',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                fontSize: '11px',
+                                                                cursor: 'pointer',
+                                                                fontWeight: '600'
+                                                            }}
+                                                        >
+                                                            Mettre a jour
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => dejaAbsent ? handleAnnulerAbsenceImprevue(appId) : handleMarquerAbsenceImprevue(appId)}
+                                                        style={{
+                                                            padding: '6px 14px',
+                                                            backgroundColor: dejaAbsent ? '#16a34a' : '#dc2626',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            cursor: 'pointer',
+                                                            fontWeight: '600'
+                                                        }}
+                                                    >
+                                                        {dejaAbsent ? 'Annuler l\'absence' : 'Marquer absent'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: '1fr 1fr',
+                                                gap: '8px',
+                                                marginTop: '8px'
+                                            }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Motif (optionnel)"
+                                                    value={currentMotif}
+                                                    onChange={(e) => setMotifsImprevues(prev => ({
+                                                        ...prev,
+                                                        [appId]: { ...prev[appId], motif: e.target.value, commentaire: prev[appId]?.commentaire ?? (existingAbsence?.commentaire || '') }
+                                                    }))}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        border: '1px solid #d1d5db',
+                                                        borderRadius: '6px',
+                                                        fontSize: '12px'
+                                                    }}
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Commentaire (optionnel)"
+                                                    value={currentCommentaire}
+                                                    onChange={(e) => setMotifsImprevues(prev => ({
+                                                        ...prev,
+                                                        [appId]: { ...prev[appId], commentaire: e.target.value, motif: prev[appId]?.motif ?? (existingAbsence?.motif || '') }
+                                                    }))}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        border: '1px solid #d1d5db',
+                                                        borderRadius: '6px',
+                                                        fontSize: '12px'
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
                                     );
                                 });
