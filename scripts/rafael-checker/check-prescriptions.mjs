@@ -172,44 +172,75 @@ async function loginCAS() {
 
 // --- Récupérer et parser les candidatures ---
 async function fetchCandidatures() {
-    // D'abord aller sur l'accueil pour établir la session Rafael
+    // Aller sur l'accueil pour établir la session Rafael
     const accueilRes = await followRedirects('https://rafael.cap-metiers.pro/preinscription/accueil');
     process.stdout.write(`[accueil] status=${accueilRes.status}, bodyLength=${accueilRes.body.length}\n`);
 
-    // Essayer plusieurs URLs possibles pour la page candidatures
-    const urlsToTry = [
-        'https://rafael.cap-metiers.pro/preinscription/candidatures',
-        'https://rafael.cap-metiers.pro/preinscription/candidatures/gestionCandidatures',
-        'https://rafael.cap-metiers.pro/preinscription/candidatures/index',
-        'https://rafael.cap-metiers.pro/preinscription/gestion-candidatures'
-    ];
+    // Chercher les URLs AJAX/API dans le HTML et les scripts
+    const scriptUrls = [];
+    const ajaxMatches = accueilRes.body.match(/(?:url|href|src|action|fetch|ajax|load)\s*[:=(\s]+\s*['"]([^'"]+candidat[^'"]*|[^'"]+preinscription[^'"]*)['"]/gi) || [];
+    ajaxMatches.forEach(m => scriptUrls.push(m));
 
-    let res = null;
-    for (const url of urlsToTry) {
-        const attempt = await followRedirects(url);
-        const title = attempt.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
-        process.stdout.write(`[try] ${url.split('.pro')[1]} -> status=${attempt.status}, bodyLength=${attempt.body.length}, title=${title}\n`);
+    // Chercher aussi les URLs dans les balises script
+    const scriptBlocks = accueilRes.body.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) || [];
+    scriptBlocks.forEach(block => {
+        const urls = block.match(/['"]\/[^'"]*(?:candidat|gestion|list|ajax|data)[^'"]*['"]/gi) || [];
+        urls.forEach(u => scriptUrls.push(u.replace(/['"]/g, '')));
+    });
 
-        if (attempt.body.length > 500 && !attempt.body.includes('non autorisé') && !attempt.body.includes('Identification requise')) {
-            res = attempt;
-            process.stdout.write(`[OK] Page candidatures trouvee\n`);
-            break;
+    process.stdout.write(`[accueil] Script URLs trouvees: ${scriptUrls.join(' | ') || 'aucune'}\n`);
+
+    // Lister TOUS les liens de la page
+    const $acc = cheerio.load(accueilRes.body);
+    const allLinks = [];
+    $acc('a').each((i, el) => {
+        const href = $acc(el).attr('href');
+        const text = $acc(el).text().trim().replace(/\s+/g, ' ').substring(0, 40);
+        if (href && href.length > 1) allLinks.push(`${text} -> ${href}`);
+    });
+    process.stdout.write(`[accueil] Tous les liens: ${allLinks.join(' | ')}\n`);
+
+    // Compter les tables dans la page accueil
+    const tables = $acc('table');
+    process.stdout.write(`[accueil] Tables trouvees: ${tables.length}\n`);
+
+    // Si des tables existent, parser directement la page accueil
+    let res = accueilRes;
+
+    // Aussi essayer les URLs trouvées dans les scripts
+    if (tables.length === 0 && scriptUrls.length > 0) {
+        for (const url of scriptUrls) {
+            const fullUrl = url.startsWith('http') ? url : `https://rafael.cap-metiers.pro${url}`;
+            try {
+                const attempt = await followRedirects(fullUrl);
+                process.stdout.write(`[ajax] ${url} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
+                if (attempt.body.length > 500) {
+                    res = attempt;
+                    break;
+                }
+            } catch (e) { /* ignore */ }
         }
     }
 
-    if (!res || res.body.length === 0) {
-        // Si aucune URL ne marche, lister les liens depuis l'accueil pour trouver la bonne
-        const $acc = cheerio.load(accueilRes.body);
-        const links = [];
-        $acc('a').each((i, el) => {
-            const href = $acc(el).attr('href');
-            const text = $acc(el).text().trim().replace(/\s+/g, ' ');
-            if (href && (href.includes('candidat') || href.includes('preinscription') || text.toLowerCase().includes('candidat') || text.toLowerCase().includes('gestion'))) {
-                links.push(`${text} -> ${href}`);
+    // Essayer aussi des URLs API communes
+    if (tables.length === 0) {
+        const apiUrls = [
+            'https://rafael.cap-metiers.pro/preinscription/candidatures/listeCandidatures',
+            'https://rafael.cap-metiers.pro/preinscription/candidatures/liste',
+            'https://rafael.cap-metiers.pro/preinscription/candidatures/recherche'
+        ];
+        for (const url of apiUrls) {
+            const attempt = await followRedirects(url);
+            process.stdout.write(`[api] ${url.split('.pro')[1]} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
+            if (attempt.body.length > 200) {
+                res = attempt;
+                break;
             }
-        });
-        process.stdout.write(`[accueil links] ${links.join(' | ') || 'aucun lien pertinent'}\n`);
-        process.stderr.write('Echec: page candidatures introuvable\n');
+        }
+    }
+
+    if (res.body.length === 0) {
+        process.stderr.write('Echec: aucune page avec du contenu trouvee\n');
         process.exit(1);
     }
 
