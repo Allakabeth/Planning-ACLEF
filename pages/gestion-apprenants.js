@@ -73,6 +73,9 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
         dispositif: 'HSP',
         lieu_formation_id: ''
     })
+    const [editingParcours, setEditingParcours] = useState(null)
+    const [editParcours, setEditParcours] = useState({})
+    const [confirmDeleteParcours, setConfirmDeleteParcours] = useState(null)
 
     // Archivage automatique au montage (une seule fois)
     useEffect(() => {
@@ -950,6 +953,83 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
             // Rediriger vers planning-type-apprenants avec l'apprenant sélectionné
             router.push(`/planning-type-apprenants?apprenant=${apprenantParcours.id}`)
 
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`)
+            setTimeout(() => setMessage(''), 4000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // Modifier un parcours existant
+    const modifierParcours = async (e) => {
+        e.preventDefault()
+        if (!editParcours.date_entree || !editParcours.date_sortie_previsionnelle) {
+            setMessage('Les dates sont obligatoires')
+            setTimeout(() => setMessage(''), 4000)
+            return
+        }
+
+        setIsLoading(true)
+        try {
+            const { error } = await supabase
+                .from('parcours_apprenants')
+                .update({
+                    date_entree: editParcours.date_entree,
+                    date_sortie_previsionnelle: editParcours.date_sortie_previsionnelle,
+                    dispositif: editParcours.dispositif,
+                    lieu_formation_id: editParcours.lieu_formation_id || null,
+                    statut: editParcours.statut
+                })
+                .eq('id', editingParcours.id)
+
+            if (error) throw error
+
+            // Si c'est le parcours actif, mettre à jour aussi la table users
+            if (editingParcours.actif) {
+                await supabase
+                    .from('users')
+                    .update({
+                        date_entree_formation: editParcours.date_entree,
+                        date_sortie_previsionnelle: editParcours.date_sortie_previsionnelle,
+                        dispositif: editParcours.dispositif,
+                        lieu_formation_id: editParcours.lieu_formation_id || null,
+                        statut_formation: editParcours.statut
+                    })
+                    .eq('id', apprenantParcours.id)
+            }
+
+            setMessage(`✅ Parcours modifié avec succès`)
+            setTimeout(() => setMessage(''), 4000)
+            setEditingParcours(null)
+            // Recharger les parcours
+            await ouvrirParcours(apprenantParcours)
+            await fetchApprenants()
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`)
+            setTimeout(() => setMessage(''), 4000)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // Supprimer un parcours
+    const supprimerParcours = async (parcours) => {
+        setIsLoading(true)
+        try {
+            const { error } = await supabase
+                .from('parcours_apprenants')
+                .delete()
+                .eq('id', parcours.id)
+
+            if (error) throw error
+
+            setMessage(`✅ Parcours supprimé avec succès`)
+            setTimeout(() => setMessage(''), 4000)
+            setConfirmDeleteParcours(null)
+            // Recharger les parcours
+            await ouvrirParcours(apprenantParcours)
+            await fetchApprenants()
         } catch (error) {
             setMessage(`❌ Erreur : ${error.message}`)
             setTimeout(() => setMessage(''), 4000)
@@ -2490,6 +2570,197 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
                                             }}>
                                                 ✅ Fin réelle : <strong>{formatDate(parcours.date_fin_reelle)}</strong>
                                             </div>
+                                        )}
+
+                                        {/* Boutons Modifier / Supprimer */}
+                                        {editingParcours?.id !== parcours.id && confirmDeleteParcours?.id !== parcours.id && (
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingParcours(parcours)
+                                                        setEditParcours({
+                                                            date_entree: parcours.date_entree || '',
+                                                            date_sortie_previsionnelle: parcours.date_sortie_previsionnelle || '',
+                                                            dispositif: parcours.dispositif || 'HSP',
+                                                            lieu_formation_id: parcours.lieu_formation_id || '',
+                                                            statut: parcours.statut || 'en_cours'
+                                                        })
+                                                        setConfirmDeleteParcours(null)
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 14px',
+                                                        backgroundColor: '#3b82f6',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        fontSize: '12px',
+                                                        fontWeight: '500',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    ✏️ Modifier
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setConfirmDeleteParcours(parcours)
+                                                        setEditingParcours(null)
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 14px',
+                                                        backgroundColor: '#ef4444',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        fontSize: '12px',
+                                                        fontWeight: '500',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    🗑️ Supprimer
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Confirmation suppression */}
+                                        {confirmDeleteParcours?.id === parcours.id && (
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '12px',
+                                                backgroundColor: '#fef2f2',
+                                                border: '1px solid #fca5a5',
+                                                borderRadius: '6px'
+                                            }}>
+                                                <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
+                                                    Supprimer le parcours {parcours.numero_parcours} ? Cette action est irréversible.
+                                                </p>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button
+                                                        onClick={() => setConfirmDeleteParcours(null)}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '8px',
+                                                            backgroundColor: '#6b7280',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        Annuler
+                                                    </button>
+                                                    <button
+                                                        onClick={() => supprimerParcours(parcours)}
+                                                        disabled={isLoading}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '8px',
+                                                            backgroundColor: isLoading ? '#9ca3af' : '#dc2626',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            fontSize: '12px',
+                                                            cursor: isLoading ? 'not-allowed' : 'pointer'
+                                                        }}
+                                                    >
+                                                        {isLoading ? 'Suppression...' : 'Confirmer la suppression'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Formulaire d'édition inline */}
+                                        {editingParcours?.id === parcours.id && (
+                                            <form onSubmit={modifierParcours} style={{
+                                                marginTop: '10px',
+                                                padding: '15px',
+                                                backgroundColor: '#eff6ff',
+                                                border: '1px solid #93c5fd',
+                                                borderRadius: '6px'
+                                            }}>
+                                                <h5 style={{ margin: '0 0 10px 0', color: '#1e40af', fontSize: '13px' }}>
+                                                    ✏️ Modifier le parcours {parcours.numero_parcours}
+                                                </h5>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#1e40af' }}>Date d'entrée *</label>
+                                                        <input
+                                                            type="date"
+                                                            value={editParcours.date_entree}
+                                                            onChange={(e) => setEditParcours({...editParcours, date_entree: e.target.value})}
+                                                            required
+                                                            style={{ width: '100%', padding: '8px', border: '1px solid #93c5fd', borderRadius: '6px', fontSize: '13px' }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#1e40af' }}>Sortie prévisionnelle *</label>
+                                                        <input
+                                                            type="date"
+                                                            value={editParcours.date_sortie_previsionnelle}
+                                                            onChange={(e) => setEditParcours({...editParcours, date_sortie_previsionnelle: e.target.value})}
+                                                            required
+                                                            style={{ width: '100%', padding: '8px', border: '1px solid #93c5fd', borderRadius: '6px', fontSize: '13px' }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#1e40af' }}>Dispositif</label>
+                                                        <select
+                                                            value={editParcours.dispositif}
+                                                            onChange={(e) => setEditParcours({...editParcours, dispositif: e.target.value})}
+                                                            style={{ width: '100%', padding: '8px', border: '1px solid #93c5fd', borderRadius: '6px', fontSize: '13px' }}
+                                                        >
+                                                            <option value="HSP">HSP</option>
+                                                            <option value="OPCO">OPCO</option>
+                                                            <option value="CDV">CDV</option>
+                                                            <option value="PM">PM</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#1e40af' }}>Lieu</label>
+                                                        <select
+                                                            value={editParcours.lieu_formation_id}
+                                                            onChange={(e) => setEditParcours({...editParcours, lieu_formation_id: e.target.value})}
+                                                            style={{ width: '100%', padding: '8px', border: '1px solid #93c5fd', borderRadius: '6px', fontSize: '13px' }}
+                                                        >
+                                                            <option value="">Sélectionner lieu...</option>
+                                                            {lieux.map((lieu) => (
+                                                                <option key={lieu.id} value={lieu.id}>{lieu.nom}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '12px', color: '#1e40af' }}>Statut</label>
+                                                        <select
+                                                            value={editParcours.statut}
+                                                            onChange={(e) => setEditParcours({...editParcours, statut: e.target.value})}
+                                                            style={{ width: '100%', padding: '8px', border: '1px solid #93c5fd', borderRadius: '6px', fontSize: '13px' }}
+                                                        >
+                                                            <option value="en_cours">En cours</option>
+                                                            <option value="termine">Terminé</option>
+                                                            <option value="suspendu">Suspendu</option>
+                                                            <option value="abandonne">Abandonné</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingParcours(null)}
+                                                        style={{ flex: 1, padding: '8px', backgroundColor: '#6b7280', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                                                    >
+                                                        Annuler
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        disabled={isLoading}
+                                                        style={{ flex: 1, padding: '8px', backgroundColor: isLoading ? '#9ca3af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: isLoading ? 'not-allowed' : 'pointer' }}
+                                                    >
+                                                        {isLoading ? 'Enregistrement...' : '✅ Enregistrer'}
+                                                    </button>
+                                                </div>
+                                            </form>
                                         )}
                                     </div>
                                 ))}
