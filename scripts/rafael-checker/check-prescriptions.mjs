@@ -172,17 +172,44 @@ async function loginCAS() {
 
 // --- Récupérer et parser les candidatures ---
 async function fetchCandidatures() {
-    // Essayer la page des candidatures
-    const res = await followRedirects('https://rafael.cap-metiers.pro/preinscription/candidatures');
+    // D'abord aller sur l'accueil pour établir la session Rafael
+    const accueilRes = await followRedirects('https://rafael.cap-metiers.pro/preinscription/accueil');
+    process.stdout.write(`[accueil] status=${accueilRes.status}, bodyLength=${accueilRes.body.length}\n`);
 
-    const pageTitle = res.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
-    process.stdout.write(`[candidatures] status=${res.status}, title=${pageTitle}, bodyLength=${res.body.length}\n`);
+    // Essayer plusieurs URLs possibles pour la page candidatures
+    const urlsToTry = [
+        'https://rafael.cap-metiers.pro/preinscription/candidatures',
+        'https://rafael.cap-metiers.pro/preinscription/candidatures/gestionCandidatures',
+        'https://rafael.cap-metiers.pro/preinscription/candidatures/index',
+        'https://rafael.cap-metiers.pro/preinscription/gestion-candidatures'
+    ];
 
-    if (res.body.includes('non autorisé') || res.body.includes('Identification requise')) {
-        // Afficher un extrait pour debug
-        const bodySnippet = res.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 500);
-        process.stderr.write(`Page body: ${bodySnippet}\n`);
-        process.stderr.write('Echec: session non authentifiee\n');
+    let res = null;
+    for (const url of urlsToTry) {
+        const attempt = await followRedirects(url);
+        const title = attempt.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
+        process.stdout.write(`[try] ${url.split('.pro')[1]} -> status=${attempt.status}, bodyLength=${attempt.body.length}, title=${title}\n`);
+
+        if (attempt.body.length > 500 && !attempt.body.includes('non autorisé') && !attempt.body.includes('Identification requise')) {
+            res = attempt;
+            process.stdout.write(`[OK] Page candidatures trouvee\n`);
+            break;
+        }
+    }
+
+    if (!res || res.body.length === 0) {
+        // Si aucune URL ne marche, lister les liens depuis l'accueil pour trouver la bonne
+        const $acc = cheerio.load(accueilRes.body);
+        const links = [];
+        $acc('a').each((i, el) => {
+            const href = $acc(el).attr('href');
+            const text = $acc(el).text().trim().replace(/\s+/g, ' ');
+            if (href && (href.includes('candidat') || href.includes('preinscription') || text.toLowerCase().includes('candidat') || text.toLowerCase().includes('gestion'))) {
+                links.push(`${text} -> ${href}`);
+            }
+        });
+        process.stdout.write(`[accueil links] ${links.join(' | ') || 'aucun lien pertinent'}\n`);
+        process.stderr.write('Echec: page candidatures introuvable\n');
         process.exit(1);
     }
 
