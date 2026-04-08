@@ -200,9 +200,36 @@ async function fetchCandidatures() {
     });
     process.stdout.write(`[accueil] Tous les liens: ${allLinks.join(' | ')}\n`);
 
-    // Compter les tables dans la page accueil
+    // Compter et analyser les tables dans la page accueil
     const tables = $acc('table');
     process.stdout.write(`[accueil] Tables trouvees: ${tables.length}\n`);
+
+    // Dumper la structure de chaque table
+    tables.each((i, table) => {
+        const $table = $acc(table);
+        const id = $table.attr('id') || 'no-id';
+        const cls = $table.attr('class') || 'no-class';
+        const headers = [];
+        $table.find('thead th, thead td, tr:first-child th').each((j, th) => {
+            headers.push($acc(th).text().trim().replace(/\s+/g, ' '));
+        });
+        const rowCount = $table.find('tbody tr').length || $table.find('tr').length;
+
+        // Dumper les 2 premières lignes de données
+        const sampleRows = [];
+        $table.find('tbody tr').slice(0, 2).each((j, tr) => {
+            const cells = [];
+            $acc(tr).find('td').each((k, td) => {
+                cells.push($acc(td).text().trim().replace(/\s+/g, ' ').substring(0, 50));
+            });
+            sampleRows.push(cells.join(' | '));
+        });
+
+        process.stdout.write(`[table ${i}] id=${id}, class=${cls}, headers=[${headers.join(', ')}], rows=${rowCount}\n`);
+        sampleRows.forEach((row, j) => {
+            process.stdout.write(`[table ${i} row ${j}] ${row}\n`);
+        });
+    });
 
     // Si des tables existent, parser directement la page accueil
     let res = accueilRes;
