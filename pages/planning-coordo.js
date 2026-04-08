@@ -2033,70 +2033,38 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             });
         });
 
-        // 🔄 SUPPRESSION DES DONNÉES EXISTANTES AVANT SAUVEGARDE
-        const { error: deleteError } = await supabase
-            .from('planning_hebdomadaire')
-            .delete()
-            .in('date', weekDates);
+        // 🔄 SUPPRESSION DES DONNÉES EXISTANTES AVANT SAUVEGARDE (en parallèle)
+        const [deleteResult, deleteFormateursResult] = await Promise.all([
+            supabase.from('planning_hebdomadaire').delete().in('date', weekDates),
+            supabase.from('planning_formateurs_hebdo').delete().in('date', weekDates)
+        ]);
 
-        if (deleteError) {
-            console.error('Erreur suppression planning existant:', deleteError);
-            throw deleteError;
+        if (deleteResult.error) {
+            console.error('Erreur suppression planning existant:', deleteResult.error);
+            throw deleteResult.error;
+        }
+        if (deleteFormateursResult.error) {
+            console.error('Erreur suppression planning formateurs existant:', deleteFormateursResult.error);
+            throw deleteFormateursResult.error;
         }
 
-        const { error: deleteFormateursError } = await supabase
-            .from('planning_formateurs_hebdo')
-            .delete()
-            .in('date', weekDates);
+        // 📝 INSERTION DES NOUVELLES DONNÉES (en parallèle)
+        const [insertResult, insertFormateursResult] = await Promise.all([
+            planningsToSave.length > 0
+                ? supabase.from('planning_hebdomadaire').insert(planningsToSave)
+                : { error: null },
+            planningFormateursToSave.length > 0
+                ? supabase.from('planning_formateurs_hebdo').insert(planningFormateursToSave)
+                : { error: null }
+        ]);
 
-        if (deleteFormateursError) {
-            console.error('Erreur suppression planning formateurs existant:', deleteFormateursError);
-            throw deleteFormateursError;
+        if (insertResult.error) {
+            console.error('Erreur insertion planning:', insertResult.error);
+            throw insertResult.error;
         }
-
-        // 📝 INSERTION DES NOUVELLES DONNÉES
-        if (planningsToSave.length > 0) {
-            // DELETE avant INSERT pour éviter les doublons
-            const { error: deleteError } = await supabase
-                .from('planning_hebdomadaire')
-                .delete()
-                .in('date', weekDates);
-
-            if (deleteError) {
-                console.error('Erreur suppression planning:', deleteError);
-                throw deleteError;
-            }
-
-            const { error: insertError } = await supabase
-                .from('planning_hebdomadaire')
-                .insert(planningsToSave);
-
-            if (insertError) {
-                console.error('Erreur insertion planning:', insertError);
-                throw insertError;
-            }
-        }
-
-        if (planningFormateursToSave.length > 0) {
-            // DELETE avant INSERT pour éviter les doublons
-            const { error: deleteFormateursError } = await supabase
-                .from('planning_formateurs_hebdo')
-                .delete()
-                .in('date', weekDates);
-
-            if (deleteFormateursError) {
-                console.error('Erreur suppression planning formateurs:', deleteFormateursError);
-                throw deleteFormateursError;
-            }
-
-            const { error: insertFormateursError } = await supabase
-                .from('planning_formateurs_hebdo')
-                .insert(planningFormateursToSave);
-
-            if (insertFormateursError) {
-                console.error('Erreur insertion planning formateurs:', insertFormateursError);
-                throw insertFormateursError;
-            }
+        if (insertFormateursResult.error) {
+            console.error('Erreur insertion planning formateurs:', insertFormateursResult.error);
+            throw insertFormateursResult.error;
         }
 
         return {
