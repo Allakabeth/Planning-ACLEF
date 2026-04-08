@@ -96,7 +96,8 @@ async function loginCAS() {
     const loginUrl = `https://sso.cap-metiers.pro/v2/users/login?service=${encodeURIComponent(serviceUrl)}`;
 
     // 1. GET page de login (récupérer cookies de session)
-    await httpRequest(loginUrl);
+    const pageRes = await httpRequest(loginUrl);
+    process.stdout.write(`[1] GET login page: status=${pageRes.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
 
     // 2. POST credentials
     const postData = [
@@ -115,13 +116,43 @@ async function loginCAS() {
         body: postData
     });
 
+    process.stdout.write(`[2] POST login: status=${loginRes.status}, location=${loginRes.headers.location || 'none'}\n`);
+
+    // Si 200 = login échoué (page de login réaffichée)
+    if (loginRes.status === 200) {
+        if (loginRes.body.includes('Identifiant ou mot de passe incorrect') || loginRes.body.includes('error') || loginRes.body.includes('erreur')) {
+            process.stderr.write('Echec: identifiants incorrects\n');
+            // Afficher un extrait pour debug
+            const bodySnippet = loginRes.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 300);
+            process.stderr.write(`Body snippet: ${bodySnippet}\n`);
+            process.exit(1);
+        }
+    }
+
     // 3. Suivre la chaîne de redirections (CAS ticket -> Rafael session)
     if (loginRes.status >= 300 && loginRes.status < 400 && loginRes.headers.location) {
         const loc = loginRes.headers.location;
         const redirectUrl = loc.startsWith('http') ? loc : `https://sso.cap-metiers.pro${loc}`;
-        await followRedirects(redirectUrl);
+        process.stdout.write(`[3] Following redirect: ${redirectUrl.substring(0, 100)}...\n`);
+
+        // Suivre chaque redirect manuellement pour logger
+        let currentUrl = redirectUrl;
+        for (let i = 0; i < 8; i++) {
+            const res = await httpRequest(currentUrl);
+            process.stdout.write(`[3.${i}] ${currentUrl.substring(0, 80)}... -> status=${res.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
+            if (res.status >= 300 && res.status < 400 && res.headers.location) {
+                const nextLoc = res.headers.location;
+                currentUrl = nextLoc.startsWith('http') ? nextLoc : new URL(nextLoc, currentUrl).href;
+            } else {
+                // Page finale atteinte
+                const pageTitle = res.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
+                process.stdout.write(`[3.final] Page title: ${pageTitle}\n`);
+                break;
+            }
+        }
     }
 
+    process.stdout.write(`Cookies finaux: ${Object.keys(cookieJar).join(', ')}\n`);
     process.stdout.write('Connexion CAS reussie\n');
 }
 
@@ -130,7 +161,13 @@ async function fetchCandidatures() {
     // Essayer la page des candidatures
     const res = await followRedirects('https://rafael.cap-metiers.pro/preinscription/candidatures');
 
+    const pageTitle = res.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
+    process.stdout.write(`[candidatures] status=${res.status}, title=${pageTitle}, bodyLength=${res.body.length}\n`);
+
     if (res.body.includes('non autorisé') || res.body.includes('Identification requise')) {
+        // Afficher un extrait pour debug
+        const bodySnippet = res.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 500);
+        process.stderr.write(`Page body: ${bodySnippet}\n`);
         process.stderr.write('Echec: session non authentifiee\n');
         process.exit(1);
     }
