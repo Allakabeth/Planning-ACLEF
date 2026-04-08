@@ -95,17 +95,34 @@ async function loginCAS() {
     const serviceUrl = 'https://rafael.cap-metiers.pro/authentification/identifie_cas';
     const loginUrl = `https://sso.cap-metiers.pro/v2/users/login?service=${encodeURIComponent(serviceUrl)}`;
 
-    // 1. GET page de login (récupérer cookies de session)
+    // 1. GET page de login (récupérer cookies + champs cachés du formulaire)
     const pageRes = await httpRequest(loginUrl);
-    process.stdout.write(`[1] GET login page: status=${pageRes.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
+    process.stdout.write(`[1] GET login page: status=${pageRes.status}, cookies=${Object.keys(cookieJar).join(',') || 'none'}\n`);
 
-    // 2. POST credentials
-    const postData = [
-        `_method=POST`,
-        `email=${encodeURIComponent(RAFAEL_EMAIL)}`,
-        `password=${encodeURIComponent(RAFAEL_PASSWORD)}`,
-        `service=${encodeURIComponent(serviceUrl)}`
-    ].join('&');
+    // Parser TOUS les champs hidden du formulaire (CSRF, tokens CakePHP, etc.)
+    const $ = cheerio.load(pageRes.body);
+    const formFields = {};
+    $('form input[type="hidden"]').each((i, el) => {
+        const name = $(el).attr('name');
+        const value = $(el).attr('value') || '';
+        if (name) formFields[name] = value;
+    });
+    process.stdout.write(`[1] Hidden fields found: ${JSON.stringify(formFields)}\n`);
+
+    // Aussi logger les raw set-cookie headers
+    process.stdout.write(`[1] Raw set-cookie: ${JSON.stringify(pageRes.headers['set-cookie'] || 'none')}\n`);
+
+    // 2. POST credentials avec TOUS les champs du formulaire
+    const postFields = {
+        ...formFields,
+        email: RAFAEL_EMAIL,
+        password: RAFAEL_PASSWORD,
+        service: serviceUrl
+    };
+
+    const postData = Object.entries(postFields)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
 
     const loginRes = await httpRequest(loginUrl, {
         method: 'POST',
@@ -116,37 +133,34 @@ async function loginCAS() {
         body: postData
     });
 
-    process.stdout.write(`[2] POST login: status=${loginRes.status}, location=${loginRes.headers.location || 'none'}\n`);
+    process.stdout.write(`[2] POST login: status=${loginRes.status}, location=${loginRes.headers.location || 'none'}, cookies=${Object.keys(cookieJar).join(',')}\n`);
+    process.stdout.write(`[2] Raw set-cookie: ${JSON.stringify(loginRes.headers['set-cookie'] || 'none')}\n`);
 
-    // Si 200 = login échoué (page de login réaffichée)
-    if (loginRes.status === 200) {
-        if (loginRes.body.includes('Identifiant ou mot de passe incorrect') || loginRes.body.includes('error') || loginRes.body.includes('erreur')) {
-            process.stderr.write('Echec: identifiants incorrects\n');
-            // Afficher un extrait pour debug
-            const bodySnippet = loginRes.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 300);
-            process.stderr.write(`Body snippet: ${bodySnippet}\n`);
-            process.exit(1);
-        }
+    // Si 302 vers la même page login = échec
+    const redirectsToLogin = loginRes.headers.location && loginRes.headers.location.includes('/v2/users/login');
+
+    if (loginRes.status === 200 || redirectsToLogin) {
+        // Login échoué - afficher un extrait pour debug
+        const body = loginRes.status === 200 ? loginRes.body : (await httpRequest(loginRes.headers.location)).body;
+        const bodySnippet = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 500);
+        process.stderr.write(`Login echoue. Body: ${bodySnippet}\n`);
+        process.exit(1);
     }
 
     // 3. Suivre la chaîne de redirections (CAS ticket -> Rafael session)
     if (loginRes.status >= 300 && loginRes.status < 400 && loginRes.headers.location) {
         const loc = loginRes.headers.location;
         const redirectUrl = loc.startsWith('http') ? loc : `https://sso.cap-metiers.pro${loc}`;
-        process.stdout.write(`[3] Following redirect: ${redirectUrl.substring(0, 100)}...\n`);
+        process.stdout.write(`[3] Following ticket redirect: ${redirectUrl.substring(0, 120)}...\n`);
 
-        // Suivre chaque redirect manuellement pour logger
         let currentUrl = redirectUrl;
         for (let i = 0; i < 8; i++) {
             const res = await httpRequest(currentUrl);
-            process.stdout.write(`[3.${i}] ${currentUrl.substring(0, 80)}... -> status=${res.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
+            process.stdout.write(`[3.${i}] -> status=${res.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
             if (res.status >= 300 && res.status < 400 && res.headers.location) {
                 const nextLoc = res.headers.location;
                 currentUrl = nextLoc.startsWith('http') ? nextLoc : new URL(nextLoc, currentUrl).href;
             } else {
-                // Page finale atteinte
-                const pageTitle = res.body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'no title';
-                process.stdout.write(`[3.final] Page title: ${pageTitle}\n`);
                 break;
             }
         }
