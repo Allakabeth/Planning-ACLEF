@@ -231,44 +231,48 @@ async function fetchCandidatures() {
         });
     });
 
-    // Si des tables existent, parser directement la page accueil
+    // Les tables de détail sont vides (chargées en AJAX)
+    // Récupérer le fichier JS pour trouver l'endpoint API
+    const jsRes = await httpRequest('https://rafael.cap-metiers.pro/js/AccueilPreinscription.js?version=8.8.8');
+    process.stdout.write(`[JS] status=${jsRes.status}, bodyLength=${jsRes.body.length}\n`);
+
+    // Chercher les URLs AJAX dans le JS (patterns: url:, ajax:, $.get, $.post, fetch, load)
+    const ajaxUrls = jsRes.body.match(/(?:url\s*:\s*|ajax\s*\(\s*|\.get\s*\(\s*|\.post\s*\(\s*|\.load\s*\(\s*|fetch\s*\(\s*)['"]([^'"]+)['"]/g) || [];
+    process.stdout.write(`[JS] AJAX patterns: ${ajaxUrls.join(' | ') || 'aucun'}\n`);
+
+    // Chercher aussi toutes les URLs/chemins dans le JS
+    const allPaths = jsRes.body.match(/['"]\/[a-zA-Z][^'"]{5,}['"]/g) || [];
+    process.stdout.write(`[JS] All paths: ${allPaths.slice(0, 20).join(' | ')}\n`);
+
+    // Essayer les endpoints trouvés
     let res = accueilRes;
+    const endpointsToTry = new Set();
 
-    // Aussi essayer les URLs trouvées dans les scripts
-    if (tables.length === 0 && scriptUrls.length > 0) {
-        for (const url of scriptUrls) {
-            const fullUrl = url.startsWith('http') ? url : `https://rafael.cap-metiers.pro${url}`;
-            try {
-                const attempt = await followRedirects(fullUrl);
-                process.stdout.write(`[ajax] ${url} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
-                if (attempt.body.length > 500) {
-                    res = attempt;
-                    break;
-                }
-            } catch (e) { /* ignore */ }
+    allPaths.forEach(p => {
+        const clean = p.replace(/['"]/g, '');
+        if (clean.includes('candidat') || clean.includes('preinscription') || clean.includes('list') || clean.includes('search')) {
+            endpointsToTry.add(clean);
         }
-    }
+    });
 
-    // Essayer aussi des URLs API communes
-    if (tables.length === 0) {
-        const apiUrls = [
-            'https://rafael.cap-metiers.pro/preinscription/candidatures/listeCandidatures',
-            'https://rafael.cap-metiers.pro/preinscription/candidatures/liste',
-            'https://rafael.cap-metiers.pro/preinscription/candidatures/recherche'
-        ];
-        for (const url of apiUrls) {
-            const attempt = await followRedirects(url);
-            process.stdout.write(`[api] ${url.split('.pro')[1]} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
-            if (attempt.body.length > 200) {
+    // Ajouter des patterns courants DataTables
+    endpointsToTry.add('/preinscription/candidatures/getUpcomingAndCurrentCandidatures');
+    endpointsToTry.add('/preinscription/getUpcomingAndCurrentCandidatures');
+    endpointsToTry.add('/preinscription/accueil/getUpcomingAndCurrentCandidatures');
+
+    for (const path of endpointsToTry) {
+        const url = `https://rafael.cap-metiers.pro${path}`;
+        try {
+            const attempt = await httpRequest(url);
+            process.stdout.write(`[endpoint] ${path} -> status=${attempt.status}, bodyLength=${attempt.body.length}, preview=${attempt.body.substring(0, 100)}\n`);
+            if (attempt.body.length > 100) {
                 res = attempt;
-                break;
             }
-        }
+        } catch (e) { /* ignore */ }
     }
 
-    if (res.body.length === 0) {
-        process.stderr.write('Echec: aucune page avec du contenu trouvee\n');
-        process.exit(1);
+    if (res === accueilRes) {
+        process.stdout.write('Pas d\'endpoint AJAX trouve, utilisation page accueil\n');
     }
 
     const $ = cheerio.load(res.body);
