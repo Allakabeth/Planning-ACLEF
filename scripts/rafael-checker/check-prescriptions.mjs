@@ -172,192 +172,93 @@ async function loginCAS() {
 
 // --- Récupérer et parser les candidatures ---
 async function fetchCandidatures() {
-    // Aller sur l'accueil pour établir la session Rafael
+    // Aller sur l'accueil
     const accueilRes = await followRedirects('https://rafael.cap-metiers.pro/preinscription/accueil');
     process.stdout.write(`[accueil] status=${accueilRes.status}, bodyLength=${accueilRes.body.length}\n`);
 
-    // Chercher les URLs AJAX/API dans le HTML et les scripts
-    const scriptUrls = [];
-    const ajaxMatches = accueilRes.body.match(/(?:url|href|src|action|fetch|ajax|load)\s*[:=(\s]+\s*['"]([^'"]+candidat[^'"]*|[^'"]+preinscription[^'"]*)['"]/gi) || [];
-    ajaxMatches.forEach(m => scriptUrls.push(m));
+    const $ = cheerio.load(accueilRes.body);
 
-    // Chercher aussi les URLs dans les balises script
-    const scriptBlocks = accueilRes.body.match(/<script[^>]*>([\s\S]*?)<\/script>/gi) || [];
-    scriptBlocks.forEach(block => {
-        const urls = block.match(/['"]\/[^'"]*(?:candidat|gestion|list|ajax|data)[^'"]*['"]/gi) || [];
-        urls.forEach(u => scriptUrls.push(u.replace(/['"]/g, '')));
+    // 1. Parser la table résumé (tableInfoPendingTreatments) pour "En attente"
+    const prescriptions = [];
+    let enAttente = 0;
+
+    $('#tableInfoPendingTreatments tbody tr').each((i, row) => {
+        const cells = $(row).find('td');
+        const textes = [];
+        cells.each((j, cell) => textes.push($(cell).text().trim()));
+        // Colonne "En attente" est la 3e (index 2)
+        const attente = parseInt(textes[2]) || 0;
+        enAttente += attente;
     });
 
-    process.stdout.write(`[accueil] Script URLs trouvees: ${scriptUrls.join(' | ') || 'aucune'}\n`);
+    process.stdout.write(`[resume] En attente total: ${enAttente}\n`);
 
-    // Lister TOUS les liens de la page
-    const $acc = cheerio.load(accueilRes.body);
-    const allLinks = [];
-    $acc('a').each((i, el) => {
-        const href = $acc(el).attr('href');
-        const text = $acc(el).text().trim().replace(/\s+/g, ' ').substring(0, 40);
-        if (href && href.length > 1) allLinks.push(`${text} -> ${href}`);
-    });
-    process.stdout.write(`[accueil] Tous les liens: ${allLinks.join(' | ')}\n`);
+    if (enAttente === 0) {
+        process.stdout.write('Aucune prescription en attente\n');
+        return [];
+    }
 
-    // Compter et analyser les tables dans la page accueil
-    const tables = $acc('table');
-    process.stdout.write(`[accueil] Tables trouvees: ${tables.length}\n`);
+    // 2. Si en attente > 0, essayer de recuperer les details via la page candidatures
+    // Le site charge les donnees via DataTables AJAX. Essayer l'URL directe de la page candidatures
+    // avec header X-Requested-With pour simuler un appel AJAX
+    const candidaturesUrls = [
+        '/preinscription/candidatures',
+        '/preinscription/candidatures/index',
+        '/preinscription/candidatures/gestionCandidatures',
+        '/preinscription/candidatures/listeCandidatures',
+        '/preinscription/candidatures/liste'
+    ];
 
-    // Dumper la structure de chaque table
-    tables.each((i, table) => {
-        const $table = $acc(table);
-        const id = $table.attr('id') || 'no-id';
-        const cls = $table.attr('class') || 'no-class';
-        const headers = [];
-        $table.find('thead th, thead td, tr:first-child th').each((j, th) => {
-            headers.push($acc(th).text().trim().replace(/\s+/g, ' '));
-        });
-        const rowCount = $table.find('tbody tr').length || $table.find('tr').length;
-
-        // Dumper les 2 premières lignes de données
-        const sampleRows = [];
-        $table.find('tbody tr').slice(0, 2).each((j, tr) => {
-            const cells = [];
-            $acc(tr).find('td').each((k, td) => {
-                cells.push($acc(td).text().trim().replace(/\s+/g, ' ').substring(0, 50));
-            });
-            sampleRows.push(cells.join(' | '));
-        });
-
-        process.stdout.write(`[table ${i}] id=${id}, class=${cls}, headers=[${headers.join(', ')}], rows=${rowCount}\n`);
-        sampleRows.forEach((row, j) => {
-            process.stdout.write(`[table ${i} row ${j}] ${row}\n`);
-        });
-    });
-
-    // Les tables de détail sont vides (chargées en AJAX)
-    // Récupérer le fichier JS pour trouver l'endpoint API
-    const jsRes = await httpRequest('https://rafael.cap-metiers.pro/js/AccueilPreinscription.js?version=8.8.8');
-    process.stdout.write(`[JS] status=${jsRes.status}, bodyLength=${jsRes.body.length}\n`);
-
-    // Le JS utilise DataTables avec sAjaxSource = data_url
-    // data_url vient probablement d'un attribut data-* sur les elements HTML
-    // Chercher les attributs data-* sur les tables et leurs parents
-    $acc('table, .liste_preinscriptions, [data-url], [data-source]').each((i, el) => {
-        const $el = $acc(el);
-        const tag = el.tagName || el.name;
-        const id = $el.attr('id') || '';
-        const attrs = {};
-        if (el.attribs) {
-            Object.entries(el.attribs).forEach(([k, v]) => {
-                if (k.startsWith('data-') || k === 'id' || k === 'class') {
-                    attrs[k] = v;
-                }
-            });
-        }
-        if (Object.keys(attrs).length > 0) {
-            process.stdout.write(`[data-attrs] <${tag}> ${JSON.stringify(attrs)}\n`);
-        }
-    });
-
-    // Chercher aussi les divs/elements avec classe liste_preinscriptions
-    const listePreinscriptions = $acc('.liste_preinscriptions');
-    process.stdout.write(`[HTML] Elements .liste_preinscriptions: ${listePreinscriptions.length}\n`);
-    listePreinscriptions.each((i, el) => {
-        const $el = $acc(el);
-        const tag = el.tagName || el.name;
-        const id = $el.attr('id') || 'no-id';
-        const allAttrs = el.attribs ? JSON.stringify(el.attribs) : '{}';
-        process.stdout.write(`[liste_preinscriptions ${i}] <${tag}> id=${id} attrs=${allAttrs}\n`);
-    });
-
-    // Chercher la variable data_url dans le JS
-    const dataUrlMatch = jsRes.body.match(/(?:var\s+)?data_url\s*=\s*[^;]+/g) || [];
-    process.stdout.write(`[JS] data_url defs: ${dataUrlMatch.join(' | ') || 'aucune'}\n`);
-
-    // Chercher id_liste aussi
-    const idListeMatch = jsRes.body.match(/(?:var\s+)?id_liste\s*=\s*[^;]+/g) || [];
-    process.stdout.write(`[JS] id_liste defs: ${idListeMatch.join(' | ') || 'aucune'}\n`);
-
-    // Essayer les endpoints trouvés
-    let res = accueilRes;
-    const endpointsToTry = new Set();
-
-    allPaths.forEach(p => {
-        const clean = p.replace(/['"]/g, '');
-        if (clean.includes('candidat') || clean.includes('preinscription') || clean.includes('list') || clean.includes('search')) {
-            endpointsToTry.add(clean);
-        }
-    });
-
-    // Ajouter des patterns courants DataTables
-    endpointsToTry.add('/preinscription/candidatures/getUpcomingAndCurrentCandidatures');
-    endpointsToTry.add('/preinscription/getUpcomingAndCurrentCandidatures');
-    endpointsToTry.add('/preinscription/accueil/getUpcomingAndCurrentCandidatures');
-
-    for (const path of endpointsToTry) {
+    let detailPage = null;
+    for (const path of candidaturesUrls) {
         const url = `https://rafael.cap-metiers.pro${path}`;
         try {
-            const attempt = await httpRequest(url);
-            process.stdout.write(`[endpoint] ${path} -> status=${attempt.status}, bodyLength=${attempt.body.length}, preview=${attempt.body.substring(0, 100)}\n`);
-            if (attempt.body.length > 100) {
-                res = attempt;
+            const attempt = await httpRequest(url, {
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Referer': 'https://rafael.cap-metiers.pro/preinscription/accueil'
+                }
+            });
+            process.stdout.write(`[try] ${path} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
+            if (attempt.body.length > 500 && !attempt.body.includes('non autorisé')) {
+                detailPage = attempt;
+                break;
             }
         } catch (e) { /* ignore */ }
     }
 
-    if (res === accueilRes) {
-        process.stdout.write('Pas d\'endpoint AJAX trouve, utilisation page accueil\n');
-    }
-
-    const $ = cheerio.load(res.body);
-    const prescriptions = [];
-
-    // Parser le tableau des candidatures
-    // On cherche les lignes du tableau principal (Gestion par candidatures)
-    $('table tbody tr').each((i, row) => {
-        const cells = $(row).find('td');
-        if (cells.length < 3) return;
-
-        // Extraire les textes de chaque cellule
-        const textes = [];
-        cells.each((j, cell) => {
-            textes.push($(cell).text().trim().replace(/\s+/g, ' '));
+    // 3. Si on a une page de detail, parser les candidatures
+    if (detailPage && detailPage.body.length > 500) {
+        const $d = cheerio.load(detailPage.body);
+        // Chercher les data-url sur les tables/elements pour les appels DataTables
+        $d('[data-url]').each((i, el) => {
+            process.stdout.write(`[detail data-url] ${$d(el).attr('data-url')}\n`);
         });
 
-        // Chercher une date au format JJ/MM/AAAA dans la première cellule
-        const dateMatch = textes[0]?.match(/(\d{2}\/\d{2}\/\d{4})/);
-        if (!dateMatch) return;
-
-        const date = dateMatch[1];
-
-        // Chercher le nom dans les cellules suivantes
-        // Le nom est généralement dans la 2e ou 3e cellule
-        let nom = '';
-        for (let k = 1; k < Math.min(textes.length, 4); k++) {
-            // Chercher un pattern nom (Mme/M. NOM Prénom ou juste NOM Prénom)
-            const cellText = textes[k];
-            if (cellText && cellText.length > 2 && !cellText.match(/^\d/) && !cellText.match(/^GRETA|^Mediawork|^ACLEF/i)) {
-                // Nettoyer : enlever "Mme", "M.", numéros de téléphone, etc.
-                const cleaned = cellText
-                    .replace(/^(Mme|M\.|Mr)\s*/i, '')
-                    .replace(/N°\s*\d+/g, '')
-                    .replace(/\d{10}/g, '')
-                    .trim();
-                if (cleaned.length > 2 && cleaned.includes(' ')) {
-                    nom = cleaned.split('\n')[0].trim();
-                    // Garder seulement NOM Prénom (les 2-3 premiers mots)
-                    const mots = nom.split(/\s+/).filter(m => m.length > 0);
-                    if (mots.length >= 2) {
-                        nom = mots.slice(0, 3).join(' ');
-                        break;
-                    }
-                }
+        $d('table tbody tr').each((i, row) => {
+            const cells = $d(row).find('td');
+            if (cells.length < 3) return;
+            const textes = [];
+            cells.each((j, cell) => textes.push($d(cell).text().trim().replace(/\s+/g, ' ')));
+            // Chercher date et nom
+            const dateMatch = textes.join(' ').match(/(\d{2}\/\d{2}\/\d{4})/);
+            if (dateMatch) {
+                const nom = textes[1] || 'Candidat';
+                prescriptions.push({ date: dateMatch[1], nom: nom.substring(0, 50) });
             }
-        }
+        });
+    }
 
-        if (nom) {
-            prescriptions.push({ date, nom });
-        }
-    });
+    // 4. Si pas de details, creer une notification generique
+    if (prescriptions.length === 0 && enAttente > 0) {
+        const today = new Date().toLocaleDateString('fr-FR');
+        prescriptions.push({
+            date: today,
+            nom: `${enAttente} nouvelle(s) prescription(s) en attente`
+        });
+    }
 
-    process.stdout.write(`${prescriptions.length} prescription(s) trouvee(s) dans le tableau\n`);
+    process.stdout.write(`${prescriptions.length} prescription(s) trouvee(s)\n`);
     return prescriptions;
 }
 
