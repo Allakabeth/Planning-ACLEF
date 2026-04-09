@@ -1532,7 +1532,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
     };
 
     const handleValiderTransmettre = async () => {
-        if (!window.confirm('Valider le planning ? Un récapitulatif sera envoyé à aclef@aclef.fr pour vérification avant envoi aux formateurs.')) return;
+        if (!window.confirm(`Valider le planning semaine ${semaine} et envoyer les notifications aux formateurs ?\n\nUn accuse de reception detaillant ce que chaque formateur a recu sera envoye a aclef@aclef.fr.`)) return;
 
         setIsLoading(true);
 
@@ -1544,17 +1544,18 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
             const nouvellesCouleursEnregistrees = calculerCouleursEnregistrees();
             setCouleursEnregistrees(nouvellesCouleursEnregistrees);
 
-            // Phase 1 : envoyer seulement le recap preview
-            const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates, true);
+            // Envoi direct aux formateurs + recap/accuse de reception a la coordination
+            const emailResult = await envoyerMessagesValidation(stats, semaine, weekDates, false);
 
             if (emailResult?.erreur) {
                 setMessage(`⚠️ Erreur: ${emailResult.erreur}`);
                 setTimeout(() => setMessage(''), 5000);
             } else {
-                // Stocker les donnees (incluant les affectations calculees) pour l'envoi definitif
-                setEnAttenteConfirmation('validation');
-                setDonneesNotifPendantes({ semaine, weekDates, stats, affectationsPrecalculees: emailResult?.affectationsFiltrees || [] });
-                setMessage(`✅ Planning semaine ${semaine} sauvegardé !\n📋 Récapitulatif PREVIEW envoyé à aclef@aclef.fr\n👉 Vérifiez puis cliquez "Confirmer l'envoi" ou "Annuler"`);
+                const envoyes = emailResult?.emailsEnvoyes || 0;
+                const echoues = emailResult?.emailsEchoues || 0;
+                const statusEmoji = echoues > 0 ? '⚠️' : '✅';
+                setMessage(`${statusEmoji} Planning semaine ${semaine} valide et transmis !\n📧 ${envoyes} notifications envoyees${echoues > 0 ? `, ${echoues} echec(s)` : ''}\n📋 Accuse de reception envoye a aclef@aclef.fr`);
+                setTimeout(() => setMessage(''), 10000);
             }
 
         } catch (error) {
