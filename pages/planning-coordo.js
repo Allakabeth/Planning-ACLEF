@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, startTransition } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/router';
 import { withAuthAdmin } from '../components/withAuthAdmin';
@@ -2722,7 +2722,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                 .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
                 .eq('statut', 'actif');
 
-            if (absData) setAbsencesApprenants(absData);
+            if (absData) startTransition(() => setAbsencesApprenants(absData));
 
             const apprenant = apprenants.find(a => a.id === apprenantId);
             setMessage('Absence enregistree pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
@@ -2769,7 +2769,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                 .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
                 .eq('statut', 'actif');
 
-            if (absData) setAbsencesApprenants(absData);
+            if (absData) startTransition(() => setAbsencesApprenants(absData));
 
             const apprenant = apprenants.find(a => a.id === apprenantId);
             setMessage('Absence annulee pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
@@ -2825,7 +2825,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                 .select('id, apprenant_id, date_debut, date_fin, type, statut, creneau, date_specifique, motif, commentaire')
                 .eq('statut', 'actif');
 
-            if (absData) setAbsencesApprenants(absData);
+            if (absData) startTransition(() => setAbsencesApprenants(absData));
 
             const apprenant = apprenants.find(a => a.id === apprenantId);
             setMessage('Motif mis a jour pour ' + (apprenant ? apprenant.prenom + ' ' + apprenant.nom : 'apprenant'));
