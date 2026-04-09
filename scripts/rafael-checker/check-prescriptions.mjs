@@ -236,18 +236,44 @@ async function fetchCandidatures() {
     const jsRes = await httpRequest('https://rafael.cap-metiers.pro/js/AccueilPreinscription.js?version=8.8.8');
     process.stdout.write(`[JS] status=${jsRes.status}, bodyLength=${jsRes.body.length}\n`);
 
-    // Dumper les lignes pertinentes du JS (DataTable, ajax, url, candidat, table)
-    const jsLines = jsRes.body.split(/[;\n]/).map(l => l.trim()).filter(l => l.length > 0);
-    const relevantLines = jsLines.filter(l =>
-        /DataTable|ajax|url\s*:|serverSide|candidat|Candidature|sAjaxSource|fnServerData/i.test(l)
-    );
-    process.stdout.write(`[JS] Lignes pertinentes (${relevantLines.length}):\n`);
-    relevantLines.forEach(l => process.stdout.write(`  ${l.substring(0, 200)}\n`));
+    // Le JS utilise DataTables avec sAjaxSource = data_url
+    // data_url vient probablement d'un attribut data-* sur les elements HTML
+    // Chercher les attributs data-* sur les tables et leurs parents
+    $acc('table, .liste_preinscriptions, [data-url], [data-source]').each((i, el) => {
+        const $el = $acc(el);
+        const tag = el.tagName || el.name;
+        const id = $el.attr('id') || '';
+        const attrs = {};
+        if (el.attribs) {
+            Object.entries(el.attribs).forEach(([k, v]) => {
+                if (k.startsWith('data-') || k === 'id' || k === 'class') {
+                    attrs[k] = v;
+                }
+            });
+        }
+        if (Object.keys(attrs).length > 0) {
+            process.stdout.write(`[data-attrs] <${tag}> ${JSON.stringify(attrs)}\n`);
+        }
+    });
 
-    // Aussi chercher toutes les strings qui ressemblent à des chemins
-    const allStrings = jsRes.body.match(/['"][^'"]{10,}['"]/g) || [];
-    const pathStrings = allStrings.filter(s => s.includes('/') || s.includes('candidat') || s.includes('Candidature'));
-    process.stdout.write(`[JS] Path strings: ${pathStrings.slice(0, 15).join(' | ')}\n`);
+    // Chercher aussi les divs/elements avec classe liste_preinscriptions
+    const listePreinscriptions = $acc('.liste_preinscriptions');
+    process.stdout.write(`[HTML] Elements .liste_preinscriptions: ${listePreinscriptions.length}\n`);
+    listePreinscriptions.each((i, el) => {
+        const $el = $acc(el);
+        const tag = el.tagName || el.name;
+        const id = $el.attr('id') || 'no-id';
+        const allAttrs = el.attribs ? JSON.stringify(el.attribs) : '{}';
+        process.stdout.write(`[liste_preinscriptions ${i}] <${tag}> id=${id} attrs=${allAttrs}\n`);
+    });
+
+    // Chercher la variable data_url dans le JS
+    const dataUrlMatch = jsRes.body.match(/(?:var\s+)?data_url\s*=\s*[^;]+/g) || [];
+    process.stdout.write(`[JS] data_url defs: ${dataUrlMatch.join(' | ') || 'aucune'}\n`);
+
+    // Chercher id_liste aussi
+    const idListeMatch = jsRes.body.match(/(?:var\s+)?id_liste\s*=\s*[^;]+/g) || [];
+    process.stdout.write(`[JS] id_liste defs: ${idListeMatch.join(' | ') || 'aucune'}\n`);
 
     // Essayer les endpoints trouvés
     let res = accueilRes;
