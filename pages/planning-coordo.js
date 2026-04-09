@@ -1551,9 +1551,9 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                 setMessage(`⚠️ Erreur: ${emailResult.erreur}`);
                 setTimeout(() => setMessage(''), 5000);
             } else {
-                // Stocker les donnees pour l'envoi definitif
+                // Stocker les donnees (incluant les affectations calculees) pour l'envoi definitif
                 setEnAttenteConfirmation('validation');
-                setDonneesNotifPendantes({ semaine, weekDates, stats });
+                setDonneesNotifPendantes({ semaine, weekDates, stats, affectationsPrecalculees: emailResult?.affectationsFiltrees || [] });
                 setMessage(`✅ Planning semaine ${semaine} sauvegardé !\n📋 Récapitulatif PREVIEW envoyé à aclef@aclef.fr\n👉 Vérifiez puis cliquez "Confirmer l'envoi" ou "Annuler"`);
             }
 
@@ -1573,11 +1573,13 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
         setIsLoading(true);
 
         try {
-            const { semaine: sem, weekDates: wd, stats, formateursModifies, detailsModifs } = donneesNotifPendantes;
+            const { semaine: sem, weekDates: wd, stats, formateursModifies, detailsModifs, affectationsPrecalculees } = donneesNotifPendantes;
 
             let emailResult;
             if (enAttenteConfirmation === 'validation') {
-                emailResult = await envoyerMessagesValidation(stats, sem, wd, false);
+                // Reutiliser les affectations calculees lors du preview pour eviter
+                // toute divergence entre preview et envoi reel
+                emailResult = await envoyerMessagesValidation(stats, sem, wd, false, affectationsPrecalculees);
             } else if (enAttenteConfirmation === 'modifications') {
                 emailResult = await envoyerMessagesModifications(formateursModifies, sem, wd, detailsModifs);
             }
@@ -1818,25 +1820,33 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
     };
 
     // Fonction envoi messages validation (previewOnly = true envoie seulement le recap a la coordination)
-    const envoyerMessagesValidation = async (stats, semaine, weekDates, previewOnly = false) => {
+    // affectationsPrecalculees : si fourni (cas confirm), on reutilise au lieu de re-querier la DB
+    const envoyerMessagesValidation = async (stats, semaine, weekDates, previewOnly = false, affectationsPrecalculees = null) => {
         try {
-            console.warn('[EMAIL-DEBUG] envoyerMessagesValidation appelée, weekDates:', weekDates, 'previewOnly:', previewOnly);
-            const { data: affectations, error: queryError } = await supabase
-                .from('planning_formateurs_hebdo')
-                .select('formateur_id, date, creneau, lieu_nom')
-                .in('date', weekDates)
-                .eq('statut', 'attribue');
+            console.warn('[EMAIL-DEBUG] envoyerMessagesValidation appelée, weekDates:', weekDates, 'previewOnly:', previewOnly, 'precalculees:', !!affectationsPrecalculees);
 
-            if (queryError) {
-                console.error('[EMAIL-DEBUG] Erreur requête affectations:', queryError);
-                return;
+            let affectationsFiltrees;
+            if (affectationsPrecalculees) {
+                // Confirm: reutiliser les donnees du preview pour eviter incoherences
+                affectationsFiltrees = affectationsPrecalculees;
+            } else {
+                const { data: affectations, error: queryError } = await supabase
+                    .from('planning_formateurs_hebdo')
+                    .select('formateur_id, date, creneau, lieu_nom')
+                    .in('date', weekDates)
+                    .eq('statut', 'attribue');
+
+                if (queryError) {
+                    console.error('[EMAIL-DEBUG] Erreur requête affectations:', queryError);
+                    return;
+                }
+
+                // Filtrer les affectations sur jours fermes
+                affectationsFiltrees = (affectations || []).filter(aff => {
+                    const creneauAff = aff.creneau === 'matin' ? 'Matin' : 'AM';
+                    return !estJourFerme(aff.date, creneauAff);
+                });
             }
-
-            // Filtrer les affectations sur jours fermes
-            const affectationsFiltrees = (affectations || []).filter(aff => {
-                const creneauAff = aff.creneau === 'matin' ? 'Matin' : 'AM';
-                return !estJourFerme(aff.date, creneauAff);
-            });
 
             console.warn('[EMAIL-DEBUG] Affectations trouvées:', affectationsFiltrees.length);
 
@@ -1972,7 +1982,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                 }
             }
 
-            return { emailsEnvoyes, emailsEchoues, previewOnly };
+            return { emailsEnvoyes, emailsEchoues, previewOnly, affectationsFiltrees };
         } catch (error) {
             console.error('[EMAIL-DEBUG] Erreur globale envoi messages validation:', error);
             return { emailsEnvoyes: 0, emailsEchoues: 0, erreur: error.message };
