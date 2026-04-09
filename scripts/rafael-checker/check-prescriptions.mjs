@@ -215,9 +215,9 @@ async function detecterLieux() {
     return lieuxAvecAttente;
 }
 
-// --- Notifier dans la messagerie ACLEF ---
+// --- Notifier ou tracker dans la messagerie ACLEF ---
 async function notifier(enAttente, lieux) {
-    // Recuperer le dernier compteur stocke en messagerie
+    // Recuperer le dernier compteur stocke en messagerie (visible ou hidden)
     const { data: dernierMessage } = await supabase
         .from('messages')
         .select('contenu')
@@ -232,20 +232,13 @@ async function notifier(enAttente, lieux) {
         if (m) dernierCount = parseInt(m[1]);
     }
 
-    // Si le compteur n'a pas augmente, ne rien faire
-    if (enAttente <= dernierCount) {
-        process.stdout.write(`En attente: ${enAttente} (inchange ou diminue depuis ${dernierCount})\n`);
+    // Aucun changement -> rien faire
+    if (enAttente === dernierCount) {
+        process.stdout.write(`En attente: ${enAttente} (inchange depuis ${dernierCount})\n`);
         return;
     }
 
-    // Construire le message
-    const lieuxText = lieux.length > 0
-        ? `\n\nLieu(x) concerne(s) : ${lieux.join(', ')}`
-        : '';
-
-    const objet = 'Notification de prescription HSP';
-    const contenu = `Vous avez une nouvelle prescription en attente.${lieuxText}\n\nVoir sur Rafael : ${RAFAEL_URL}\n\n[count:${enAttente}]`;
-
+    const isNotification = enAttente > dernierCount;
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const heure = now.toLocaleTimeString('fr-FR', {
@@ -253,6 +246,21 @@ async function notifier(enAttente, lieux) {
         minute: '2-digit',
         hour12: false
     });
+
+    let objet, contenu;
+
+    if (isNotification) {
+        // Augmentation -> notification visible
+        const lieuxText = lieux.length > 0
+            ? `\n\nLieu(x) concerne(s) : ${lieux.join(', ')}`
+            : '';
+        objet = 'Notification de prescription HSP';
+        contenu = `Vous avez une nouvelle prescription en attente.${lieuxText}\n\nVoir sur Rafael : ${RAFAEL_URL}\n\n[count:${enAttente}]`;
+    } else {
+        // Diminution -> message tracking cache (archive + lu)
+        objet = 'Tracking Rafael';
+        contenu = `Compteur Rafael mis a jour: ${enAttente}\n\n[count:${enAttente}]`;
+    }
 
     const { error } = await supabase.from('messages').insert({
         expediteur_id: null,
@@ -262,8 +270,8 @@ async function notifier(enAttente, lieux) {
         objet,
         contenu,
         type: 'prescription_rafael',
-        lu: false,
-        archive: false,
+        lu: !isNotification,        // visible si notif, deja lu si tracking
+        archive: !isNotification,   // visible si notif, archive si tracking
         date,
         heure
     });
@@ -273,7 +281,11 @@ async function notifier(enAttente, lieux) {
         process.exit(1);
     }
 
-    process.stdout.write(`Notification envoyee: ${enAttente} en attente (etait ${dernierCount})\n`);
+    if (isNotification) {
+        process.stdout.write(`Notification envoyee: ${enAttente} en attente (etait ${dernierCount})\n`);
+    } else {
+        process.stdout.write(`Tracking mis a jour: ${enAttente} (etait ${dernierCount})\n`);
+    }
 }
 
 // --- Main ---
@@ -283,12 +295,8 @@ async function main() {
         const enAttente = await fetchEnAttente();
         process.stdout.write(`En attente: ${enAttente}\n`);
 
-        if (enAttente === 0) {
-            process.stdout.write('Rien a signaler\n');
-            return;
-        }
-
-        const lieux = await detecterLieux();
+        // Detecter les lieux uniquement si on a des candidatures en attente
+        const lieux = enAttente > 0 ? await detecterLieux() : [];
         await notifier(enAttente, lieux);
     } catch (error) {
         process.stderr.write(`Erreur: ${error.message}\n`);
