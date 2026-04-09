@@ -1352,7 +1352,22 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
                 lineHeight: '1.5',
                 whiteSpace: 'pre-wrap'  // ✅ Respecter les retours à la ligne
               }}>
-                {selectedMessage.contenu}
+                {selectedMessage.contenu && selectedMessage.contenu.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+                  if (part.match(/^https?:\/\//)) {
+                    return (
+                      <a
+                        key={i}
+                        href={part}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#2563eb', textDecoration: 'underline' }}
+                      >
+                        {part}
+                      </a>
+                    );
+                  }
+                  return part;
+                })}
               </div>
 
               {/* Info statut traité */}

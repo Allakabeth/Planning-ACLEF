@@ -1,7 +1,7 @@
 // ============================================================
-// Script de vérification des nouvelles prescriptions Rafael
-// Se connecte au CAS cap-metiers.pro, parse les candidatures,
-// et insère un message dans la messagerie ACLEF si nouveau.
+// Verification automatique des nouvelles prescriptions Rafael
+// Connexion CAS, lecture du compteur "En attente" du tableau resume,
+// puis insertion d'un message dans la messagerie ACLEF si nouveau.
 // ============================================================
 
 import https from 'https';
@@ -19,6 +19,16 @@ if (!RAFAEL_EMAIL || !RAFAEL_PASSWORD || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE
     process.stderr.write('Variables d\'environnement manquantes\n');
     process.exit(1);
 }
+
+// Sessions HSP de l'ACLEF avec leur reference Rafael
+const SESSIONS_HSP = [
+    { lieu: 'CCP', ref: '00550837' },
+    { lieu: 'MPT', ref: '00550835' },
+    { lieu: 'Lencloitre', ref: '00550838' },
+    { lieu: 'Pleumartin', ref: '00550836' }
+];
+
+const RAFAEL_URL = 'https://rafael.cap-metiers.pro/preinscription/accueil';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -42,7 +52,7 @@ function cookieString() {
     return Object.entries(cookieJar).map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
-// --- Requête HTTP avec gestion cookies ---
+// --- Requete HTTP avec gestion cookies ---
 function httpRequest(url, options = {}) {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
@@ -95,11 +105,10 @@ async function loginCAS() {
     const serviceUrl = 'https://rafael.cap-metiers.pro/authentification/identifie_cas';
     const loginUrl = `https://sso.cap-metiers.pro/v2/users/login?service=${encodeURIComponent(serviceUrl)}`;
 
-    // 1. GET page de login (récupérer cookies + champs cachés du formulaire)
+    // 1. GET page de login
     const pageRes = await httpRequest(loginUrl);
-    process.stdout.write(`[1] GET login page: status=${pageRes.status}, cookies=${Object.keys(cookieJar).join(',') || 'none'}\n`);
 
-    // Parser TOUS les champs hidden du formulaire (CSRF, tokens CakePHP, etc.)
+    // Parser les champs hidden du formulaire
     const $ = cheerio.load(pageRes.body);
     const formFields = {};
     $('form input[type="hidden"]').each((i, el) => {
@@ -107,12 +116,8 @@ async function loginCAS() {
         const value = $(el).attr('value') || '';
         if (name) formFields[name] = value;
     });
-    process.stdout.write(`[1] Hidden fields found: ${JSON.stringify(formFields)}\n`);
 
-    // Aussi logger les raw set-cookie headers
-    process.stdout.write(`[1] Raw set-cookie: ${JSON.stringify(pageRes.headers['set-cookie'] || 'none')}\n`);
-
-    // 2. POST credentials avec TOUS les champs du formulaire
+    // 2. POST credentials
     const postFields = {
         ...formFields,
         email: RAFAEL_EMAIL,
@@ -133,30 +138,21 @@ async function loginCAS() {
         body: postData
     });
 
-    process.stdout.write(`[2] POST login: status=${loginRes.status}, location=${loginRes.headers.location || 'none'}, cookies=${Object.keys(cookieJar).join(',')}\n`);
-    process.stdout.write(`[2] Raw set-cookie: ${JSON.stringify(loginRes.headers['set-cookie'] || 'none')}\n`);
-
-    // Si 302 vers la même page login = échec
+    // Si redirige vers /v2/users/login = echec
     const redirectsToLogin = loginRes.headers.location && loginRes.headers.location.includes('/v2/users/login');
-
     if (loginRes.status === 200 || redirectsToLogin) {
-        // Login échoué - afficher un extrait pour debug
-        const body = loginRes.status === 200 ? loginRes.body : (await httpRequest(loginRes.headers.location)).body;
-        const bodySnippet = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').substring(0, 500);
-        process.stderr.write(`Login echoue. Body: ${bodySnippet}\n`);
+        process.stderr.write('Echec login CAS: identifiants incorrects\n');
         process.exit(1);
     }
 
-    // 3. Suivre la chaîne de redirections (CAS ticket -> Rafael session)
+    // 3. Suivre la chaine de redirections (CAS ticket -> Rafael session)
     if (loginRes.status >= 300 && loginRes.status < 400 && loginRes.headers.location) {
         const loc = loginRes.headers.location;
         const redirectUrl = loc.startsWith('http') ? loc : `https://sso.cap-metiers.pro${loc}`;
-        process.stdout.write(`[3] Following ticket redirect: ${redirectUrl.substring(0, 120)}...\n`);
 
         let currentUrl = redirectUrl;
         for (let i = 0; i < 8; i++) {
             const res = await httpRequest(currentUrl);
-            process.stdout.write(`[3.${i}] -> status=${res.status}, cookies=${Object.keys(cookieJar).join(',')}\n`);
             if (res.status >= 300 && res.status < 400 && res.headers.location) {
                 const nextLoc = res.headers.location;
                 currentUrl = nextLoc.startsWith('http') ? nextLoc : new URL(nextLoc, currentUrl).href;
@@ -166,22 +162,15 @@ async function loginCAS() {
         }
     }
 
-    process.stdout.write(`Cookies finaux: ${Object.keys(cookieJar).join(', ')}\n`);
-    process.stdout.write('Connexion CAS reussie\n');
+    process.stdout.write('Connexion Rafael OK\n');
 }
 
-// --- Récupérer et parser les candidatures ---
-async function fetchCandidatures() {
-    // Aller sur l'accueil
-    const accueilRes = await followRedirects('https://rafael.cap-metiers.pro/preinscription/accueil');
-    process.stdout.write(`[accueil] status=${accueilRes.status}, bodyLength=${accueilRes.body.length}\n`);
-
+// --- Lire le compteur "En attente" du tableau resume ---
+async function fetchEnAttente() {
+    const accueilRes = await followRedirects(RAFAEL_URL);
     const $ = cheerio.load(accueilRes.body);
 
-    // 1. Parser la table résumé (tableInfoPendingTreatments) pour "En attente"
-    const prescriptions = [];
     let enAttente = 0;
-
     $('#tableInfoPendingTreatments tbody tr').each((i, row) => {
         const cells = $(row).find('td');
         const textes = [];
@@ -191,148 +180,116 @@ async function fetchCandidatures() {
         enAttente += attente;
     });
 
-    process.stdout.write(`[resume] En attente total: ${enAttente}\n`);
-
-    if (enAttente === 0) {
-        process.stdout.write('Aucune prescription en attente\n');
-        return [];
-    }
-
-    // 2. Si en attente > 0, essayer de recuperer les details via la page candidatures
-    // Le site charge les donnees via DataTables AJAX. Essayer l'URL directe de la page candidatures
-    // avec header X-Requested-With pour simuler un appel AJAX
-    const candidaturesUrls = [
-        '/preinscription/candidatures',
-        '/preinscription/candidatures/index',
-        '/preinscription/candidatures/gestionCandidatures',
-        '/preinscription/candidatures/listeCandidatures',
-        '/preinscription/candidatures/liste'
-    ];
-
-    let detailPage = null;
-    for (const path of candidaturesUrls) {
-        const url = `https://rafael.cap-metiers.pro${path}`;
-        try {
-            const attempt = await httpRequest(url, {
-                headers: {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Referer': 'https://rafael.cap-metiers.pro/preinscription/accueil'
-                }
-            });
-            process.stdout.write(`[try] ${path} -> status=${attempt.status}, bodyLength=${attempt.body.length}\n`);
-            if (attempt.body.length > 500 && !attempt.body.includes('non autorisé')) {
-                detailPage = attempt;
-                break;
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    // 3. Si on a une page de detail, parser les candidatures
-    if (detailPage && detailPage.body.length > 500) {
-        const $d = cheerio.load(detailPage.body);
-        // Chercher les data-url sur les tables/elements pour les appels DataTables
-        $d('[data-url]').each((i, el) => {
-            process.stdout.write(`[detail data-url] ${$d(el).attr('data-url')}\n`);
-        });
-
-        $d('table tbody tr').each((i, row) => {
-            const cells = $d(row).find('td');
-            if (cells.length < 3) return;
-            const textes = [];
-            cells.each((j, cell) => textes.push($d(cell).text().trim().replace(/\s+/g, ' ')));
-            // Chercher date et nom
-            const dateMatch = textes.join(' ').match(/(\d{2}\/\d{2}\/\d{4})/);
-            if (dateMatch) {
-                const nom = textes[1] || 'Candidat';
-                prescriptions.push({ date: dateMatch[1], nom: nom.substring(0, 50) });
-            }
-        });
-    }
-
-    // 4. Si pas de details, creer une notification generique
-    if (prescriptions.length === 0 && enAttente > 0) {
-        const today = new Date().toLocaleDateString('fr-FR');
-        prescriptions.push({
-            date: today,
-            nom: `${enAttente} nouvelle(s) prescription(s) en attente`
-        });
-    }
-
-    process.stdout.write(`${prescriptions.length} prescription(s) trouvee(s)\n`);
-    return prescriptions;
+    return enAttente;
 }
 
-// --- Vérifier et notifier les nouvelles prescriptions ---
-async function notifierNouvellesPrescriptions(prescriptions) {
-    if (prescriptions.length === 0) {
-        process.stdout.write('Aucune prescription a verifier\n');
-        return;
-    }
+// --- Tenter de detecter quel(s) lieu(x) ont des candidatures en attente ---
+async function detecterLieux() {
+    const lieuxAvecAttente = [];
 
-    // Récupérer les messages déjà envoyés de type prescription_rafael
-    const { data: messagesExistants } = await supabase
-        .from('messages')
-        .select('contenu')
-        .eq('type', 'prescription_rafael');
+    // Essayer plusieurs patterns d'URL pour chaque session
+    const urlPatterns = [
+        '/preinscription/sessions/{ref}',
+        '/preinscription/session/{ref}',
+        '/formation/sessions/view/{ref}',
+        '/formation/sessions/{ref}',
+        '/preinscription/candidatures/session/{ref}'
+    ];
 
-    const dejaNotes = new Set(
-        (messagesExistants || []).map(m => m.contenu)
-    );
-
-    let nouveaux = 0;
-
-    for (const p of prescriptions) {
-        const contenu = `Nouvelle prescription recue le ${p.date}.`;
-        const cle = `${p.date}-${p.nom}`;
-
-        // Vérifier si déjà notifié (chercher dans les contenus existants)
-        const dejaNotifie = (messagesExistants || []).some(m =>
-            m.contenu && m.contenu.includes(p.date) && m.contenu.includes(p.nom)
-        );
-
-        if (dejaNotifie) continue;
-
-        // Insérer le message dans la messagerie ACLEF
-        const now = new Date();
-        const date = now.toISOString().split('T')[0];
-        const heure = now.toLocaleTimeString('fr-FR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
-
-        const { error } = await supabase.from('messages').insert({
-            expediteur_id: null,
-            destinataire_id: null,
-            expediteur: 'Rafael Cap Metiers',
-            destinataire: 'Coordination ACLEF',
-            objet: `Nouvelle prescription Rafael - ${p.nom}`,
-            contenu: `Nouvelle prescription recue le ${p.date}. Candidat: ${p.nom}`,
-            type: 'prescription_rafael',
-            lu: false,
-            archive: false,
-            date,
-            heure
-        });
-
-        if (error) {
-            process.stderr.write(`Erreur insertion message pour ${p.nom}: ${error.message}\n`);
-        } else {
-            process.stdout.write(`Nouveau: ${p.nom} (${p.date})\n`);
-            nouveaux++;
+    for (const session of SESSIONS_HSP) {
+        for (const pattern of urlPatterns) {
+            const url = `https://rafael.cap-metiers.pro${pattern.replace('{ref}', session.ref)}`;
+            try {
+                const res = await httpRequest(url);
+                if (res.status === 200 && res.body.length > 500 && !res.body.includes('non autorisé')) {
+                    // Chercher "en attente" dans le contenu de la page
+                    if (res.body.match(/en\s+attente/i)) {
+                        lieuxAvecAttente.push(session.lieu);
+                        break;
+                    }
+                }
+            } catch (e) { /* ignore */ }
         }
     }
 
-    process.stdout.write(`${nouveaux} nouvelle(s) prescription(s) notifiee(s)\n`);
+    return lieuxAvecAttente;
+}
+
+// --- Notifier dans la messagerie ACLEF ---
+async function notifier(enAttente, lieux) {
+    // Recuperer le dernier compteur stocke en messagerie
+    const { data: dernierMessage } = await supabase
+        .from('messages')
+        .select('contenu')
+        .eq('type', 'prescription_rafael')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+    // Extraire le compteur du dernier message (format: [count:N])
+    let dernierCount = 0;
+    if (dernierMessage && dernierMessage[0]) {
+        const m = dernierMessage[0].contenu.match(/\[count:(\d+)\]/);
+        if (m) dernierCount = parseInt(m[1]);
+    }
+
+    // Si le compteur n'a pas augmente, ne rien faire
+    if (enAttente <= dernierCount) {
+        process.stdout.write(`En attente: ${enAttente} (inchange ou diminue depuis ${dernierCount})\n`);
+        return;
+    }
+
+    // Construire le message
+    const lieuxText = lieux.length > 0
+        ? `\n\nLieu(x) concerne(s) : ${lieux.join(', ')}`
+        : '';
+
+    const objet = 'Notification de prescription HSP';
+    const contenu = `Vous avez une nouvelle prescription en attente.${lieuxText}\n\nVoir sur Rafael : ${RAFAEL_URL}\n\n[count:${enAttente}]`;
+
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const heure = now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    const { error } = await supabase.from('messages').insert({
+        expediteur_id: null,
+        destinataire_id: null,
+        expediteur: 'Rafael Cap Metiers',
+        destinataire: 'Coordination ACLEF',
+        objet,
+        contenu,
+        type: 'prescription_rafael',
+        lu: false,
+        archive: false,
+        date,
+        heure
+    });
+
+    if (error) {
+        process.stderr.write(`Erreur insertion message: ${error.message}\n`);
+        process.exit(1);
+    }
+
+    process.stdout.write(`Notification envoyee: ${enAttente} en attente (etait ${dernierCount})\n`);
 }
 
 // --- Main ---
 async function main() {
     try {
         await loginCAS();
-        const prescriptions = await fetchCandidatures();
-        await notifierNouvellesPrescriptions(prescriptions);
-        process.stdout.write('Verification terminee\n');
+        const enAttente = await fetchEnAttente();
+        process.stdout.write(`En attente: ${enAttente}\n`);
+
+        if (enAttente === 0) {
+            process.stdout.write('Rien a signaler\n');
+            return;
+        }
+
+        const lieux = await detecterLieux();
+        await notifier(enAttente, lieux);
     } catch (error) {
         process.stderr.write(`Erreur: ${error.message}\n`);
         process.exit(1);
