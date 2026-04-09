@@ -236,13 +236,18 @@ async function fetchCandidatures() {
     const jsRes = await httpRequest('https://rafael.cap-metiers.pro/js/AccueilPreinscription.js?version=8.8.8');
     process.stdout.write(`[JS] status=${jsRes.status}, bodyLength=${jsRes.body.length}\n`);
 
-    // Chercher les URLs AJAX dans le JS (patterns: url:, ajax:, $.get, $.post, fetch, load)
-    const ajaxUrls = jsRes.body.match(/(?:url\s*:\s*|ajax\s*\(\s*|\.get\s*\(\s*|\.post\s*\(\s*|\.load\s*\(\s*|fetch\s*\(\s*)['"]([^'"]+)['"]/g) || [];
-    process.stdout.write(`[JS] AJAX patterns: ${ajaxUrls.join(' | ') || 'aucun'}\n`);
+    // Dumper les lignes pertinentes du JS (DataTable, ajax, url, candidat, table)
+    const jsLines = jsRes.body.split(/[;\n]/).map(l => l.trim()).filter(l => l.length > 0);
+    const relevantLines = jsLines.filter(l =>
+        /DataTable|ajax|url\s*:|serverSide|candidat|Candidature|sAjaxSource|fnServerData/i.test(l)
+    );
+    process.stdout.write(`[JS] Lignes pertinentes (${relevantLines.length}):\n`);
+    relevantLines.forEach(l => process.stdout.write(`  ${l.substring(0, 200)}\n`));
 
-    // Chercher aussi toutes les URLs/chemins dans le JS
-    const allPaths = jsRes.body.match(/['"]\/[a-zA-Z][^'"]{5,}['"]/g) || [];
-    process.stdout.write(`[JS] All paths: ${allPaths.slice(0, 20).join(' | ')}\n`);
+    // Aussi chercher toutes les strings qui ressemblent à des chemins
+    const allStrings = jsRes.body.match(/['"][^'"]{10,}['"]/g) || [];
+    const pathStrings = allStrings.filter(s => s.includes('/') || s.includes('candidat') || s.includes('Candidature'));
+    process.stdout.write(`[JS] Path strings: ${pathStrings.slice(0, 15).join(' | ')}\n`);
 
     // Essayer les endpoints trouvés
     let res = accueilRes;
