@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Aucun apprenant HSP prévu pour ce créneau' });
     }
 
-    const MAX_LIGNES = 14;
+    const MAX_LIGNES = 13;
     if (data.apprenants.length > MAX_LIGNES && !confirmed) {
       const exclus = data.apprenants.slice(MAX_LIGNES).map(a => `${a.prenom} ${a.nom}`);
       return res.status(200).json({
@@ -284,8 +284,8 @@ async function createEmargementHSPPDF(data) {
       // LIGNES DES APPRENANTS (10 lignes)
       // ========================================
       const rowHeight = 18;
-      const totalLignes = 14;
-      const nombreApprenants = Math.min(data.apprenants.length, 14);
+      const totalLignes = 13;
+      const nombreApprenants = Math.min(data.apprenants.length, 13);
 
       for (let i = 0; i < totalLignes; i++) {
         const apprenant = i < nombreApprenants ? data.apprenants[i] : null;
