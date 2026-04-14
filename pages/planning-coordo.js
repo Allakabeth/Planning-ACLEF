@@ -2862,6 +2862,29 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
 
             let typeEmargement = 'HSP';
 
+            // Si HSP renvoie une demande de confirmation (trop d'apprenants)
+            if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+                const maybeWarn = await response.json();
+                if (maybeWarn.needsConfirmation) {
+                    const exclusTxt = maybeWarn.exclus.join(', ');
+                    const ok = window.confirm(
+                        `⚠️ Attention : ${maybeWarn.total} apprenants sont prévus mais la feuille ne peut en contenir que ${maybeWarn.max}.\n\n` +
+                        `Apprenant(s) exclu(s) : ${exclusTxt}\n\n` +
+                        `Voulez-vous éditer quand même la feuille de présence ?`
+                    );
+                    if (!ok) {
+                        setMessage('❌ Génération annulée');
+                        setTimeout(() => setMessage(''), 3000);
+                        return;
+                    }
+                    response = await fetch('/api/emargement/generate-hsp-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...seanceData, confirmed: true })
+                    });
+                }
+            }
+
             // Si pas d'apprenants HSP, essayer OPCO
             if (!response.ok) {
                 const error = await response.json();
