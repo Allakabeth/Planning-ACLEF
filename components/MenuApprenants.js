@@ -34,6 +34,11 @@ export default function MenuApprenants({
   // 🚀 CACHE - Éviter requêtes répétitives
   const [cache] = useState(() => new Map());
 
+  // Modal ajout exceptionnel apprenant
+  const [modalAjoutExceptionnelOuverte, setModalAjoutExceptionnelOuverte] = useState(false);
+  const [rechercheApprenant, setRechercheApprenant] = useState('');
+  const [ajoutEnCours, setAjoutEnCours] = useState(false);
+
   // Fonctions de validation (copiées de MenuApprenants original)
   const validateDatesFormation = (apprenant, dateTest) => {
     if (!apprenant.date_entree_formation) return false;
@@ -220,6 +225,36 @@ export default function MenuApprenants({
     }
   }, [date, jour, creneau, lieu_id]); // Dépendances conservées mais protégées
 
+  const handleAjoutExceptionnel = async (apprenantId) => {
+    setAjoutEnCours(true);
+    try {
+      const creneauDB = creneau === 'Matin' ? 'matin' : 'AM';
+      const { error } = await supabase
+        .from('absences_apprenants')
+        .insert({
+          apprenant_id: apprenantId,
+          type: 'presence_exceptionnelle',
+          date_specifique: date,
+          creneau: creneauDB,
+          lieu_id: lieu_id,
+          statut: 'actif'
+        });
+      if (error) throw error;
+
+      const cacheKey = `${date}-${jour}-${creneau}-${lieu_id}`;
+      cache.delete(cacheKey);
+      const disponibles = await getApprenantsDisponibles(date, jour, creneau, lieu_id);
+      setApprenantsDisponibles(disponibles);
+
+      setModalAjoutExceptionnelOuverte(false);
+      setRechercheApprenant('');
+    } catch (err) {
+      alert('Erreur lors de l\'ajout exceptionnel : ' + (err.message || 'insertion echouee'));
+    } finally {
+      setAjoutEnCours(false);
+    }
+  };
+
   // Extraire les indices de la cellKey pour les handlers
   const [dayIndex, lieuIndex, creneauName] = cellKey.split('-');
   const dayIdx = parseInt(dayIndex);
@@ -361,6 +396,23 @@ export default function MenuApprenants({
           >
             +
           </button>
+          <button
+            onClick={() => setModalAjoutExceptionnelOuverte(true)}
+            style={{
+              padding: '3px 6px',
+              background: '#d4af37',
+              color: 'white',
+              border: 'none',
+              borderRadius: '3px',
+              fontSize: '10px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+            disabled={disabled}
+            title="Ajouter exceptionnellement un apprenant"
+          >
+            +
+          </button>
           {selectedApprenants.length > 0 && (
             <button
               onClick={() => onRemoveApprenant(dayIdx, lieuIdx, creneauName)}
@@ -383,6 +435,129 @@ export default function MenuApprenants({
       )}
 
       </div>
+
+      {modalAjoutExceptionnelOuverte && (
+        <div
+          className="no-print"
+          onClick={() => !ajoutEnCours && setModalAjoutExceptionnelOuverte(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: '8px',
+              padding: '20px',
+              width: '90%',
+              maxWidth: '400px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              color: '#000'
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#333' }}>
+              Ajouter exceptionnellement un apprenant
+            </h3>
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+              {jour} {date} - {creneau}
+            </div>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Rechercher (prenom ou nom)"
+              value={rechercheApprenant}
+              onChange={(e) => setRechercheApprenant(e.target.value)}
+              disabled={ajoutEnCours}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: '14px',
+                marginBottom: '12px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #e5e7eb', borderRadius: '4px' }}>
+              {(() => {
+                const normaliser = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const recherche = normaliser(rechercheApprenant.trim());
+                const idsExclus = new Set([
+                  ...selectedApprenants.filter(Boolean),
+                  ...apprenantsDisponibles.map(a => a.id)
+                ]);
+                const candidats = (apprenants || [])
+                  .filter(a => !idsExclus.has(a.id))
+                  .filter(a => {
+                    if (!recherche) return true;
+                    const texte = normaliser(`${a.prenom || ''} ${a.nom || ''}`);
+                    return texte.includes(recherche);
+                  })
+                  .sort((a, b) => {
+                    const an = normaliser(`${a.prenom} ${a.nom}`);
+                    const bn = normaliser(`${b.prenom} ${b.nom}`);
+                    return an.localeCompare(bn);
+                  });
+
+                if (candidats.length === 0) {
+                  return (
+                    <div style={{ padding: '12px', fontSize: '13px', color: '#666', textAlign: 'center' }}>
+                      Aucun apprenant trouve
+                    </div>
+                  );
+                }
+
+                return candidats.map((a) => (
+                  <div
+                    key={a.id}
+                    onClick={() => !ajoutEnCours && handleAjoutExceptionnel(a.id)}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '14px',
+                      cursor: ajoutEnCours ? 'wait' : 'pointer',
+                      borderBottom: '1px solid #f3f4f6',
+                      background: ajoutEnCours ? '#f9fafb' : 'white'
+                    }}
+                    onMouseEnter={(e) => !ajoutEnCours && (e.currentTarget.style.background = '#fef3c7')}
+                    onMouseLeave={(e) => !ajoutEnCours && (e.currentTarget.style.background = 'white')}
+                  >
+                    {a.prenom} {a.nom}
+                  </div>
+                ));
+              })()}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+              <button
+                onClick={() => setModalAjoutExceptionnelOuverte(false)}
+                disabled={ajoutEnCours}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  cursor: ajoutEnCours ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
