@@ -85,6 +85,9 @@ export default function LoginFormateur() {
                         </label>
                         <input
                             type="text"
+                            name="username"
+                            id="username"
+                            autoComplete="username"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             required
@@ -114,6 +117,9 @@ export default function LoginFormateur() {
                         <div style={{ position: 'relative' }}>
                             <input
                                 type={showPassword ? 'text' : 'password'}
+                                name="password"
+                                id="password"
+                                autoComplete="current-password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
