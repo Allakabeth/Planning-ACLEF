@@ -1,7 +1,44 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../lib/supabaseClient'
 import { withAuthAdmin } from '../components/withAuthAdmin'
+
+// Format YYYY-MM-DD en local (evite les decalages UTC)
+function formatLocalDate(d) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
+// Genere la liste des jours ouvres (lun-ven) entre deux dates (incluses),
+// groupes par mois pour l'affichage du calendrier mode "dates ponctuelles".
+// Si dateDebut/dateFin manquantes ou invalides, retourne un tableau vide.
+function genererJoursOuvresParPeriode(dateDebut, dateFin) {
+    if (!dateDebut || !dateFin) return []
+    const start = new Date(dateDebut)
+    const end = new Date(dateFin)
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return []
+    start.setHours(0, 0, 0, 0)
+    end.setHours(0, 0, 0, 0)
+    if (end < start) return []
+
+    const moisMap = new Map() // monthKey -> { key, label, jours: [] }
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dow = d.getDay()
+        if (dow === 0 || dow === 6) continue // week-end
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        if (!moisMap.has(monthKey)) {
+            const label = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+            moisMap.set(monthKey, { key: monthKey, label, jours: [] })
+        }
+        moisMap.get(monthKey).jours.push({
+            date: formatLocalDate(d),
+            label: d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit' })
+        })
+    }
+    return Array.from(moisMap.values())
+}
 
 function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const router = useRouter()
@@ -15,6 +52,31 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     const [message, setMessage] = useState(null)
     const [connectedAdmins, setConnectedAdmins] = useState([]); // Liste des admins connectés
     const [apprenantsVerrouilles, setApprenantsVerrouilles] = useState([]); // Apprenants en cours d'édition
+
+    // Mode "dates ponctuelles" : alternative au planning hebdo
+    // 'hebdo' = grille jour x creneau (defaut, comportement actuel)
+    // 'dates' = calendrier 6 mois ou on coche les dates de formation
+    const [modePlanning, setModePlanning] = useState('hebdo')
+    const [lieuModeDate, setLieuModeDate] = useState('') // Lieu unique pour le mode dates
+    const [datesCochees, setDatesCochees] = useState(new Set()) // Set<"YYYY-MM-DD_matin" | "YYYY-MM-DD_AM">
+
+    // Calendrier base sur les dates de parcours de l'apprenant selectionne
+    // (date_entree_formation -> date_fin_formation_reelle || date_sortie_previsionnelle)
+    // Inclut aussi les dates deja cochees au cas ou elles depassent la fin du parcours.
+    const moisCalendrier = useMemo(() => {
+        if (!apprenantSelectionne) return []
+        const debut = apprenantSelectionne.date_entree_formation
+        const finParcours = apprenantSelectionne.date_fin_formation_reelle || apprenantSelectionne.date_sortie_previsionnelle
+        if (!debut || !finParcours) return []
+
+        // Si une date cochee depasse la fin du parcours, on etend pour la rendre visible
+        let finEffective = finParcours
+        for (const k of datesCochees) {
+            const d = k.split('_')[0]
+            if (d > finEffective) finEffective = d
+        }
+        return genererJoursOuvresParPeriode(debut, finEffective)
+    }, [apprenantSelectionne, datesCochees])
 
     // 🎯 MODE ÉDITION : On peut modifier SI l'apprenant n'est PAS verrouillé par un autre admin
     const apprenantEstVerrouille = apprenantSelectionne && apprenantsVerrouilles.some(v => v.apprenant_id === apprenantSelectionne.id);
@@ -126,7 +188,7 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
             // Tentative avec vue enrichie
             let { data, error } = await supabase
                 .from('apprenants_actifs')
-                .select('id, prenom, nom, statut_formation')
+                .select('id, prenom, nom, statut_formation, date_entree_formation, date_sortie_previsionnelle, date_fin_formation_reelle')
                 .eq('statut_formation', 'en_cours')
                 .order('nom')
 
@@ -135,7 +197,7 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                 console.log('Vue apprenants_actifs non disponible, utilisation table users')
                 const result = await supabase
                     .from('users')
-                    .select('id, prenom, nom, statut_formation')
+                    .select('id, prenom, nom, statut_formation, date_entree_formation, date_sortie_previsionnelle, date_fin_formation_reelle')
                     .eq('role', 'apprenant')
                     .eq('archive', false)
                     .order('nom')
@@ -243,35 +305,53 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
     };
 
     // Fonction pour charger le planning existant d'un apprenant
+    // Detecte automatiquement le mode : si planning_apprenants_dates contient
+    // des lignes pour cet apprenant -> mode 'dates', sinon mode 'hebdo'
     const fetchPlanningType = async (apprenantId) => {
         if (!apprenantId) return
 
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('planning_apprenants')
-                .select(`
-                    jour, creneau, lieu_id,
-                    lieux:lieu_id (nom, couleur, initiale)
-                `)
-                .eq('apprenant_id', apprenantId)
-                .eq('actif', true)
+            const [hebdoRes, datesRes] = await Promise.all([
+                supabase
+                    .from('planning_apprenants')
+                    .select(`jour, creneau, lieu_id, lieux:lieu_id (nom, couleur, initiale)`)
+                    .eq('apprenant_id', apprenantId)
+                    .eq('actif', true),
+                supabase
+                    .from('planning_apprenants_dates')
+                    .select('date, creneau, lieu_id')
+                    .eq('apprenant_id', apprenantId)
+            ])
 
-            if (error) throw error
+            if (hebdoRes.error) throw hebdoRes.error
+            if (datesRes.error) throw datesRes.error
 
-            // Convertir en format grille pour l'interface
-            const planning = {}
-            data?.forEach(item => {
-                const key = `${item.jour}-${item.creneau}`
-                planning[key] = {
-                    lieu_id: item.lieu_id,
-                    lieu_nom: item.lieux?.nom,
-                    lieu_couleur: item.lieux?.couleur,
-                    lieu_initiale: item.lieux?.initiale
-                }
-            })
+            const datesData = datesRes.data || []
 
-            setPlanningType(planning)
+            if (datesData.length > 0) {
+                // Mode dates ponctuelles
+                setModePlanning('dates')
+                setLieuModeDate(datesData[0].lieu_id || '')
+                setDatesCochees(new Set(datesData.map(r => `${r.date}_${r.creneau}`)))
+                setPlanningType({}) // grille hebdo vide
+            } else {
+                // Mode hebdo (defaut / comportement actuel)
+                setModePlanning('hebdo')
+                setLieuModeDate('')
+                setDatesCochees(new Set())
+                const planning = {}
+                hebdoRes.data?.forEach(item => {
+                    const key = `${item.jour}-${item.creneau}`
+                    planning[key] = {
+                        lieu_id: item.lieu_id,
+                        lieu_nom: item.lieux?.nom,
+                        lieu_couleur: item.lieux?.couleur,
+                        lieu_initiale: item.lieux?.initiale
+                    }
+                })
+                setPlanningType(planning)
+            }
         } catch (err) {
             console.error('Erreur chargement planning:', err)
             setMessage({
@@ -329,7 +409,33 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
         }
     }
 
+    // Bascule entre les deux modes (efface les saisies non sauvegardees de l'autre mode)
+    const handleChangeMode = (nouveauMode) => {
+        if (nouveauMode === modePlanning) return
+        setModePlanning(nouveauMode)
+        setMessage(null)
+        // Vider l'etat de l'autre mode pour eviter la confusion
+        if (nouveauMode === 'dates') {
+            setPlanningType({})
+        } else {
+            setLieuModeDate('')
+            setDatesCochees(new Set())
+        }
+    }
+
+    // Toggle d'une case (date, creneau) dans le calendrier mode "dates"
+    const toggleDateCreneau = (date, creneau) => {
+        const k = `${date}_${creneau}`
+        setDatesCochees(prev => {
+            const next = new Set(prev)
+            if (next.has(k)) next.delete(k); else next.add(k)
+            return next
+        })
+    }
+
     // Sauvegarde du planning
+    // Garantit l'exclusivite mode hebdo / mode dates en supprimant toujours
+    // les lignes de l'autre table pour cet apprenant.
     const sauvegarderPlanning = async () => {
         if (!apprenantSelectionne) {
             setMessage({
@@ -339,39 +445,71 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
             return
         }
 
+        if (modePlanning === 'dates' && !lieuModeDate && datesCochees.size > 0) {
+            setMessage({
+                type: 'error',
+                text: 'Veuillez sélectionner un lieu pour les dates ponctuelles'
+            })
+            return
+        }
+
         setLoading(true)
         try {
-            // 1. Supprimer l'ancien planning de cet apprenant
-            await supabase
-                .from('planning_apprenants')
-                .delete()
-                .eq('apprenant_id', apprenantSelectionne.id)
+            // 1. Toujours vider les deux tables pour cet apprenant (exclusivite)
+            await Promise.all([
+                supabase.from('planning_apprenants').delete().eq('apprenant_id', apprenantSelectionne.id),
+                supabase.from('planning_apprenants_dates').delete().eq('apprenant_id', apprenantSelectionne.id)
+            ])
 
-            // 2. Insérer le nouveau planning
-            const planningArray = Object.entries(planningType)
-                .filter(([key, value]) => value.lieu_id) // Seules les cases avec lieu
-                .map(([key, value]) => {
-                    const [jour, creneau] = key.split('-')
+            if (modePlanning === 'hebdo') {
+                // 2a. Insert mode hebdo (comportement existant)
+                const planningArray = Object.entries(planningType)
+                    .filter(([key, value]) => value.lieu_id)
+                    .map(([key, value]) => {
+                        const [jour, creneau] = key.split('-')
+                        return {
+                            apprenant_id: apprenantSelectionne.id,
+                            jour,
+                            creneau,
+                            lieu_id: value.lieu_id
+                        }
+                    })
+
+                if (planningArray.length > 0) {
+                    const { error } = await supabase
+                        .from('planning_apprenants')
+                        .insert(planningArray)
+                    if (error) throw error
+                }
+
+                setMessage({
+                    type: 'success',
+                    text: `✅ Planning sauvegardé pour ${apprenantSelectionne.prenom} ${apprenantSelectionne.nom} (${planningArray.length} créneaux)`
+                })
+            } else {
+                // 2b. Insert mode dates ponctuelles
+                const rows = Array.from(datesCochees).map(k => {
+                    const [date, creneau] = k.split('_')
                     return {
                         apprenant_id: apprenantSelectionne.id,
-                        jour,
+                        date,
                         creneau,
-                        lieu_id: value.lieu_id
+                        lieu_id: lieuModeDate
                     }
                 })
 
-            if (planningArray.length > 0) {
-                const { error } = await supabase
-                    .from('planning_apprenants')
-                    .insert(planningArray)
+                if (rows.length > 0) {
+                    const { error } = await supabase
+                        .from('planning_apprenants_dates')
+                        .insert(rows)
+                    if (error) throw error
+                }
 
-                if (error) throw error
+                setMessage({
+                    type: 'success',
+                    text: `✅ Planning sauvegardé pour ${apprenantSelectionne.prenom} ${apprenantSelectionne.nom} (${rows.length} créneaux sur dates précises)`
+                })
             }
-
-            setMessage({
-                type: 'success',
-                text: `✅ Planning sauvegardé pour ${apprenantSelectionne.prenom} ${apprenantSelectionne.nom} (${planningArray.length} créneaux)`
-            })
 
         } catch (error) {
             console.error('Erreur sauvegarde:', error)
@@ -420,8 +558,10 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
         )
     }
 
-    // Statistiques du planning
-    const nbCreneaux = Object.keys(planningType).length
+    // Statistiques du planning (depend du mode actif)
+    const nbCreneaux = modePlanning === 'hebdo'
+        ? Object.keys(planningType).length
+        : datesCochees.size
 
     return (
         <>
@@ -646,24 +786,134 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                     .planning-type-apprenants {
                         padding: 10px;
                     }
-                    
+
                     .container-planning {
                         padding: 20px;
                     }
-                    
+
                     .grille-planning {
                         font-size: 12px;
                     }
-                    
+
                     .select-lieu {
                         font-size: 11px;
                         padding: 6px;
                     }
-                    
+
                     .header-jour, .label-creneau {
                         padding: 8px;
                         font-size: 12px;
                     }
+                }
+
+                /* Toggle mode hebdo / dates */
+                .mode-toggle {
+                    display: flex;
+                    justify-content: center;
+                    gap: 0;
+                    margin: 20px 0 10px 0;
+                }
+                .mode-toggle button {
+                    padding: 10px 24px;
+                    border: 2px solid #667eea;
+                    background: white;
+                    color: #667eea;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                .mode-toggle button:first-child {
+                    border-radius: 8px 0 0 8px;
+                    border-right: none;
+                }
+                .mode-toggle button:last-child {
+                    border-radius: 0 8px 8px 0;
+                }
+                .mode-toggle button.active {
+                    background: #667eea;
+                    color: white;
+                }
+                .mode-toggle button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                /* Calendrier mode dates ponctuelles */
+                .calendar-container {
+                    background: #667eea;
+                    border-radius: 15px;
+                    padding: 20px;
+                    margin: 20px 0;
+                }
+                .calendar-lieu-selector {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                    color: white;
+                    font-weight: 600;
+                }
+                .calendar-lieu-selector select {
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    border: none;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    min-width: 200px;
+                }
+                .calendar-months {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 16px;
+                }
+                .calendar-month {
+                    background: white;
+                    border-radius: 10px;
+                    padding: 14px;
+                }
+                .calendar-month h3 {
+                    margin: 0 0 10px 0;
+                    color: #667eea;
+                    font-size: 16px;
+                    text-transform: capitalize;
+                    text-align: center;
+                    border-bottom: 2px solid #f3f4f6;
+                    padding-bottom: 8px;
+                }
+                .calendar-day-row {
+                    display: grid;
+                    grid-template-columns: 1fr auto auto;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 6px 4px;
+                    border-bottom: 1px solid #f3f4f6;
+                    font-size: 13px;
+                }
+                .calendar-day-row:last-child {
+                    border-bottom: none;
+                }
+                .calendar-day-label {
+                    color: #374151;
+                    text-transform: capitalize;
+                }
+                .calendar-cb {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-size: 12px;
+                    color: #6b7280;
+                    cursor: pointer;
+                    user-select: none;
+                }
+                .calendar-cb input {
+                    cursor: pointer;
+                }
+                .calendar-cb input:disabled,
+                .calendar-cb input:disabled + span {
+                    cursor: not-allowed;
+                    opacity: 0.5;
                 }
             `}</style>
 
@@ -852,6 +1102,26 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                         </select>
                     </div>
 
+                    {/* Toggle mode hebdo / dates ponctuelles */}
+                    {apprenantSelectionne && (
+                        <div className="mode-toggle">
+                            <button
+                                className={modePlanning === 'hebdo' ? 'active' : ''}
+                                onClick={() => handleChangeMode('hebdo')}
+                                disabled={!canEdit}
+                            >
+                                Planning hebdomadaire
+                            </button>
+                            <button
+                                className={modePlanning === 'dates' ? 'active' : ''}
+                                onClick={() => handleChangeMode('dates')}
+                                disabled={!canEdit}
+                            >
+                                Dates ponctuelles
+                            </button>
+                        </div>
+                    )}
+
                     {/* Message d'information */}
                     {message && (
                         <div className={`message ${message.type}`}>
@@ -859,45 +1129,118 @@ function PlanningTypeApprenants({ user, logout, inactivityTime, priority }) {
                         </div>
                     )}
 
-                    {/* Grille de planning */}
-                    <div className="grille-container" style={{ position: 'relative' }}>
-                        {loading && (
-                            <div className="loading-overlay">
-                                <div style={{ color: 'white', fontSize: '18px' }}>
-                                    Chargement...
+                    {/* Grille de planning (mode hebdo) OU calendrier (mode dates) */}
+                    {modePlanning === 'hebdo' ? (
+                        <div className="grille-container" style={{ position: 'relative' }}>
+                            {loading && (
+                                <div className="loading-overlay">
+                                    <div style={{ color: 'white', fontSize: '18px' }}>
+                                        Chargement...
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                        
-                        <table className="grille-planning">
-                            <thead>
-                                <tr>
-                                    <th className="header-creneau"></th>
-                                    {jours.map(jour => (
-                                        <th key={jour} className="header-jour">
-                                            {jour.charAt(0).toUpperCase() + jour.slice(1)}
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {creneaux.map(creneau => (
-                                    <tr key={creneau}>
-                                        <td className="label-creneau">
-                                            {creneau === 'matin' ? 'Matin' : 'AM'}
-                                        </td>
+                            )}
+
+                            <table className="grille-planning">
+                                <thead>
+                                    <tr>
+                                        <th className="header-creneau"></th>
                                         {jours.map(jour => (
-                                            <CasePlanning
-                                                key={`${jour}-${creneau}`}
-                                                jour={jour}
-                                                creneau={creneau}
-                                            />
+                                            <th key={jour} className="header-jour">
+                                                {jour.charAt(0).toUpperCase() + jour.slice(1)}
+                                            </th>
                                         ))}
                                     </tr>
+                                </thead>
+                                <tbody>
+                                    {creneaux.map(creneau => (
+                                        <tr key={creneau}>
+                                            <td className="label-creneau">
+                                                {creneau === 'matin' ? 'Matin' : 'AM'}
+                                            </td>
+                                            {jours.map(jour => (
+                                                <CasePlanning
+                                                    key={`${jour}-${creneau}`}
+                                                    jour={jour}
+                                                    creneau={creneau}
+                                                />
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="calendar-container" style={{ position: 'relative' }}>
+                            {loading && (
+                                <div className="loading-overlay">
+                                    <div style={{ color: 'white', fontSize: '18px' }}>
+                                        Chargement...
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="calendar-lieu-selector">
+                                <label htmlFor="lieu-mode-date">Lieu unique :</label>
+                                <select
+                                    id="lieu-mode-date"
+                                    value={lieuModeDate}
+                                    onChange={(e) => setLieuModeDate(e.target.value)}
+                                    disabled={!apprenantSelectionne || !canEdit}
+                                >
+                                    <option value="">-- Choisir un lieu --</option>
+                                    {lieux.map(lieu => (
+                                        <option key={lieu.id} value={lieu.id}>
+                                            {lieu.nom}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {moisCalendrier.length === 0 && apprenantSelectionne && (
+                                <div style={{
+                                    background: 'white',
+                                    padding: '20px',
+                                    borderRadius: '10px',
+                                    color: '#b91c1c',
+                                    textAlign: 'center',
+                                    fontWeight: '600'
+                                }}>
+                                    ⚠️ Impossible d'afficher le calendrier : cet apprenant n'a pas de date d'entrée ou de date de fin de formation renseignée.
+                                </div>
+                            )}
+
+                            <div className="calendar-months">
+                                {moisCalendrier.map(mois => (
+                                    <div key={mois.key} className="calendar-month">
+                                        <h3>{mois.label}</h3>
+                                        {mois.jours.map(jour => (
+                                            <div key={jour.date} className="calendar-day-row">
+                                                <span className="calendar-day-label">{jour.label}</span>
+                                                <label className="calendar-cb">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={datesCochees.has(`${jour.date}_matin`)}
+                                                        onChange={() => toggleDateCreneau(jour.date, 'matin')}
+                                                        disabled={!apprenantSelectionne || !canEdit || !lieuModeDate}
+                                                    />
+                                                    <span>M</span>
+                                                </label>
+                                                <label className="calendar-cb">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={datesCochees.has(`${jour.date}_AM`)}
+                                                        onChange={() => toggleDateCreneau(jour.date, 'AM')}
+                                                        disabled={!apprenantSelectionne || !canEdit || !lieuModeDate}
+                                                    />
+                                                    <span>AM</span>
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Actions et statistiques */}
                     <div className="actions-section">
