@@ -242,7 +242,11 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   const chargerConfiguration = async () => {
     try {
       setLoadingConfig(true)
-      const response = await fetch('/api/config-messagerie')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const response = await fetch('/api/config-messagerie', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
       const data = await response.json()
 
       if (response.ok) {
@@ -261,9 +265,17 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   const mettreAJourConfig = async (cle, valeur) => {
     try {
       setSavingConfig(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('❌ Session admin expirée, reconnectez-vous')
+        return
+      }
       const response = await fetch('/api/config-messagerie', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ cle, valeur })
       })
 
@@ -358,7 +370,11 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   // ✅ NOUVEAU: Charger l'historique des nettoyages
   const chargerLogs = async () => {
     try {
-      const response = await fetch('/api/config-messagerie?logs=true')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) return
+      const response = await fetch('/api/config-messagerie?logs=true', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
       const data = await response.json()
 
       if (response.ok) {

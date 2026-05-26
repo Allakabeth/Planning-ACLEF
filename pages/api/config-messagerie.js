@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabaseClient'
+import { requireAdminAuth } from '../../lib/apiAuthAdmin'
 
 /**
  * API de gestion de la configuration du nettoyage automatique de la messagerie
@@ -6,8 +7,13 @@ import { supabase } from '../../lib/supabaseClient'
  * GET /api/config-messagerie - Récupérer la configuration actuelle
  * POST /api/config-messagerie - Mettre à jour la configuration
  * GET /api/config-messagerie?logs=true - Récupérer l'historique des nettoyages
+ *
+ * Securite : reservee aux admins (token Supabase + whitelist email).
  */
 export default async function handler(req, res) {
+  const adminUser = await requireAdminAuth(req, res)
+  if (!adminUser) return
+
   try {
     // GET : Récupérer la configuration ou les logs
     if (req.method === 'GET') {
