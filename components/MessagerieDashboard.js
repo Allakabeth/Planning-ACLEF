@@ -291,7 +291,14 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
   const obtenirApercu = async () => {
     try {
       setLoadingPreview(true)
-      const response = await fetch('/api/auto-cleanup-messages?action=preview')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('❌ Session admin expirée, reconnectez-vous')
+        return
+      }
+      const response = await fetch('/api/auto-cleanup-messages?action=preview', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      })
       const data = await response.json()
 
       if (response.ok) {
@@ -316,9 +323,17 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
 
     try {
       setCleaning(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('❌ Session admin expirée, reconnectez-vous')
+        return
+      }
       const response = await fetch('/api/auto-cleanup-messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ executeur: 'admin_manuel' })
       })
 

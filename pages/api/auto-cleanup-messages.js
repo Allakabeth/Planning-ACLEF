@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabaseClient'
+import { requireAdminAuth } from '../../lib/apiAuthAdmin'
 
 /**
  * API de nettoyage automatique de la messagerie
@@ -12,8 +13,14 @@ import { supabase } from '../../lib/supabaseClient'
  * Usage :
  * - GET /api/auto-cleanup-messages?action=preview (aperçu sans exécution)
  * - POST /api/auto-cleanup-messages (exécution réelle)
+ *
+ * Securite : reservee aux admins (token Supabase + whitelist email).
  */
 export default async function handler(req, res) {
+  // Auth admin obligatoire (preview ET execution)
+  const adminUser = await requireAdminAuth(req, res)
+  if (!adminUser) return
+
   try {
     const isPreview = req.method === 'GET' && req.query.action === 'preview'
 
