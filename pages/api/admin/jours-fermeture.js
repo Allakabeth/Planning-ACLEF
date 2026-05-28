@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '../../../lib/apiAuthAdmin';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -68,6 +69,10 @@ function getJoursFeriesFrancais(year) {
 }
 
 export default async function handler(req, res) {
+    // Auth admin obligatoire pour toutes les methodes (GET / POST / DELETE)
+    const adminUser = await requireAdminAuth(req, res);
+    if (!adminUser) return;
+
     // GET - Liste des fermetures
     if (req.method === 'GET') {
         try {

@@ -2232,7 +2232,11 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
     const loadFermetures = async () => {
         try {
             const annee = currentDate.getFullYear();
-            const response = await fetch(`/api/admin/jours-fermeture?annee=${annee}`);
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) return;
+            const response = await fetch(`/api/admin/jours-fermeture?annee=${annee}`, {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+            });
             if (response.ok) {
                 const data = await response.json();
                 setFermetures(data.fermetures || []);
@@ -2249,9 +2253,17 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
         }
 
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                alert('Session admin expirée, reconnectez-vous');
+                return;
+            }
             const response = await fetch('/api/admin/jours-fermeture', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
                 body: JSON.stringify({
                     date_debut: nouvelleFermeture.date_debut,
                     date_fin: nouvelleFermeture.date_fin || null,
@@ -2280,8 +2292,14 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
         if (!confirm('Supprimer cette fermeture ?')) return;
 
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                alert('Session admin expirée, reconnectez-vous');
+                return;
+            }
             const response = await fetch(`/api/admin/jours-fermeture?id=${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
             });
 
             if (response.ok) {
@@ -2299,9 +2317,17 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
         if (!confirm(`Initialiser les jours fériés français pour ${annee} ?`)) return;
 
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) {
+                alert('Session admin expirée, reconnectez-vous');
+                return;
+            }
             const response = await fetch('/api/admin/jours-fermeture', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
                 body: JSON.stringify({ action: 'init_feries', annee })
             });
 
