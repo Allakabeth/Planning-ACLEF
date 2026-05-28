@@ -1,6 +1,10 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin'
+import { requireAdminAuth } from '../../../lib/apiAuthAdmin'
 
 export default async function handler(req, res) {
+    const adminUser = await requireAdminAuth(req, res)
+    if (!adminUser) return
+
     if (req.method === 'GET') {
         return handleGet(req, res)
     } else if (req.method === 'POST') {

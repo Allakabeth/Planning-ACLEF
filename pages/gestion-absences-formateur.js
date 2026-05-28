@@ -178,7 +178,13 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
         try {
             setIsLoading(true)
-            const response = await fetch(`/api/admin/presences-formateurs?formateur_id=${formateurSelectionne}&date_debut=${dateDebut}&date_fin=${dateFin}`)
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) {
+                throw new Error('Session admin expirée, reconnectez-vous')
+            }
+            const response = await fetch(`/api/admin/presences-formateurs?formateur_id=${formateurSelectionne}&date_debut=${dateDebut}&date_fin=${dateFin}`, {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+            })
 
             if (!response.ok) {
                 throw new Error('Erreur lors du chargement des présences')
@@ -343,10 +349,15 @@ function GestionAbsencesFormateur({ user, logout, inactivityTime, priority }) {
 
         try {
             setIsLoading(true)
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session?.access_token) {
+                throw new Error('Session admin expirée, reconnectez-vous')
+            }
             const response = await fetch('/api/admin/presences-formateurs', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({
                     formateur_id: formateurSelectionne,
