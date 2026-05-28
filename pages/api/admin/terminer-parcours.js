@@ -1,10 +1,14 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin'
+import { requireAdminAuth } from '../../../lib/apiAuthAdmin'
 import crypto from 'crypto'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Methode non autorisee' })
   }
+
+  const adminUser = await requireAdminAuth(req, res)
+  if (!adminUser) return
 
   try {
     const { apprenant_id } = req.body

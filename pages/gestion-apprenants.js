@@ -622,11 +622,17 @@ function GestionApprenants({ user, logout, inactivityTime, priority }) {
             const nouveauStatut = apprenantEnModification.statut_formation
             if (nouveauStatut === 'termine' || nouveauStatut === 'abandonne') {
                 try {
-                    await fetch('/api/admin/terminer-parcours', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ apprenant_id: apprenantEnModification.id })
-                    })
+                    const { data: { session } } = await supabase.auth.getSession()
+                    if (session?.access_token) {
+                        await fetch('/api/admin/terminer-parcours', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${session.access_token}`
+                            },
+                            body: JSON.stringify({ apprenant_id: apprenantEnModification.id })
+                        })
+                    }
                 } catch (e) { /* suivi est un bonus, ne pas bloquer */ }
 
                 // Poser la question satisfaction

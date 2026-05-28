@@ -184,9 +184,17 @@ function MessagerieDashboard({ user, logout, inactivityTime, router }) {
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        alert('❌ Session admin expirée, reconnectez-vous')
+        return
+      }
       const response = await fetch('/api/admin/terminer-parcours', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ apprenant_id: message.apprenant_concerne_id })
       })
 
