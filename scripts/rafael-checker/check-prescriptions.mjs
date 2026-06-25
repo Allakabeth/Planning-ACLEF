@@ -170,11 +170,19 @@ async function fetchEnAttente() {
     const accueilRes = await followRedirects(RAFAEL_URL);
     const $ = cheerio.load(accueilRes.body);
 
+    // [DEBUG]
+    process.stdout.write(`[DEBUG] status=${accueilRes.status} body_length=${accueilRes.body.length}\n`);
+    process.stdout.write(`[DEBUG] table_present=${$('#tableInfoPendingTreatments').length}\n`);
+    process.stdout.write(`[DEBUG] tbody_rows=${$('#tableInfoPendingTreatments tbody tr').length}\n`);
+    process.stdout.write(`[DEBUG] title=${$('title').text().trim()}\n`);
+    process.stdout.write(`[DEBUG] body_snippet=${accueilRes.body.substring(0, 300).replace(/\s+/g, ' ')}\n`);
+
     let enAttente = 0;
     $('#tableInfoPendingTreatments tbody tr').each((i, row) => {
         const cells = $(row).find('td');
         const textes = [];
         cells.each((j, cell) => textes.push($(cell).text().trim()));
+        process.stdout.write(`[DEBUG] row${i}=${JSON.stringify(textes)}\n`);
         // Colonne "En attente" est la 3e (index 2)
         const attente = parseInt(textes[2]) || 0;
         enAttente += attente;
