@@ -174,6 +174,9 @@ async function fetchEnAttente() {
     process.stdout.write(`[DEBUG] status=${accueilRes.status} body_length=${accueilRes.body.length}\n`);
     process.stdout.write(`[DEBUG] table_present=${$('#tableInfoPendingTreatments').length}\n`);
     process.stdout.write(`[DEBUG] tbody_rows=${$('#tableInfoPendingTreatments tbody tr').length}\n`);
+    const headers = [];
+    $('#tableInfoPendingTreatments thead th, #tableInfoPendingTreatments thead td').each((j, th) => headers.push($(th).text().trim()));
+    process.stdout.write(`[DEBUG] headers=${JSON.stringify(headers)}\n`);
     process.stdout.write(`[DEBUG] title=${$('title').text().trim()}\n`);
     process.stdout.write(`[DEBUG] body_snippet=${accueilRes.body.substring(0, 300).replace(/\s+/g, ' ')}\n`);
 
