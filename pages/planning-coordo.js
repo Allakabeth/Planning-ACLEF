@@ -3985,8 +3985,9 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                                         />
 
                                                         {/* Boutons Organisation Pédagogique et Émargement */}
-                                                        {canEdit && (
-                                                            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '8px' }}>
+                                                        {/* La rangée est toujours visible ; seuls 📋 et 🚨 (qui modifient des données) restent réservés à canEdit. 📝 (émargement, lecture seule) est accessible à tous. */}
+                                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '8px' }}>
+                                                                {canEdit && (
                                                                 <button
                                                                     onClick={() => {
                                                                         setSeanceSelectionnee({
@@ -4014,6 +4015,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                                                 >
                                                                     📋
                                                                 </button>
+                                                                )}
 
                                                                 <button
                                                                     onClick={() => handleGenerateEmargement({
@@ -4037,6 +4039,7 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                                                     📝
                                                                 </button>
 
+                                                                {canEdit && (
                                                                 <button
                                                                     onClick={() => {
                                                                         setCellAbsenceImprevue({
@@ -4060,8 +4063,8 @@ ${stats.creneaux} créneaux • ${stats.formateursAfectes} formateurs`);
                                                                 >
                                                                     🚨
                                                                 </button>
+                                                                )}
                                                             </div>
-                                                        )}
                                                     </div>
                                                 </td>
                                             );
